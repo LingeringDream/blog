@@ -1,0 +1,20 @@
+node_modules/
+.env
+*.sqlite
+*.db
+.DS_Store
+*.log
+
+# Sensitive files
+*-config.json
+*-credentials*
+*-mcp-config*
+*screenshot.png
+*secret*
+*apikey*
+*.pem
+*.key
+
+# IDE
+.vscode/
+.idea/

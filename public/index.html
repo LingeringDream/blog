@@ -3,36 +3,458 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="探索技术与生活的精彩内容 - 个人博客">
-  <meta property="og:title" content="我的博客">
-  <meta property="og:description" content="探索技术与生活的精彩内容">
-  <meta property="og:type" content="website">
-  <meta property="og:locale" content="zh_CN">
-  <meta name="twitter:card" content="summary_large_image">
   <title>我的博客</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <style>
+    /* 页面级动画 */
+    .page-transition {
+      animation: fadeIn 0.4s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    /* 文章卡片交错动画 */
+    .articles-container article {
+      opacity: 0;
+      animation: fadeInUp 0.5s ease-out forwards;
+    }
+    
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
 </head>
 <body>
-  <header>
-    <div class="container">
-      <h1>我的博客</h1>
-      <nav>
-        <a href="/">首页</a>
-        <a href="/admin">管理</a>
-      </nav>
+  <!-- 阅读进度条 -->
+  <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+
+  <!-- 导航栏 -->
+  <nav id="navbar">
+    <div class="logo">✨ 我的博客</div>
+    <ul class="nav-links">
+      <li><a href="/" class="active">首页</a></li>
+      <li><a href="/admin">管理</a></li>
+      <li><a href="/about">关于</a></li>
+    </ul>
+    <div class="theme-toggle" id="themeToggle" title="切换主题">
+      <span class="icon sun">☀️</span>
+      <span class="icon moon">🌙</span>
     </div>
-  </header>
-  
-  <main class="container">
-    <div class="posts-grid" id="posts-container"></div>
+  </nav>
+
+  <!-- 主容器 -->
+  <main class="container page-transition">
+    <!-- 搜索框 -->
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="搜索文章...">
+    </div>
+
+    <!-- 文章列表 -->
+    <div class="articles-container" id="articlesContainer">
+      <!-- 骨架屏加载 -->
+      <div class="skeleton-container" id="skeletonLoader">
+        <article class="skeleton-article">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text" style="width: 60%"></div>
+        </article>
+        <article class="skeleton-article">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text" style="width: 50%"></div>
+        </article>
+      </div>
+
+      <!-- 文章动态加载 -->
+      <div id="articlesGrid" class="articles-grid"></div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination" id="pagination"></div>
   </main>
-  
-  <footer>
-    <div class="container">
-      <p>Powered by Express + SQLite</p>
+
+  <!-- 返回顶部按钮 -->
+  <button class="back-to-top" id="backToTop" title="返回顶部">↑</button>
+
+  <!-- 文章详情模态框 -->
+  <div class="modal" id="articleModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button class="btn btn-secondary" id="shareArticle" title="分享文章">分享</button>
+        <button class="btn btn-secondary" id="closeModal">✕</button>
+      </div>
+      <div id="articleContent"></div>
     </div>
-  </footer>
-  
-  <script src="/app.js"></script>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+  <script>
+    // ==================== 配置 ====================
+    const API_BASE = '/api';
+
+    // ==================== 分享功能 ====================
+    const ShareManager = {
+      show(event, slug, title) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        this.hide();
+        
+        const url = `${window.location.origin}/post/${slug}`;
+        
+        const panel = document.createElement('div');
+        panel.className = 'share-panel';
+        panel.id = 'share-panel';
+        panel.innerHTML = `
+          <div class="share-content">
+            <div class="share-header">
+              <span>分享文章</span>
+              <button class="share-close" onclick="ShareManager.hide()">✕</button>
+            </div>
+            <div class="share-options">
+              <button onclick="ShareManager.copyLink('${url}')" class="share-option">
+                <span class="share-icon">🔗</span>
+                <span>复制链接</span>
+              </button>
+              <button onclick="ShareManager.shareToWeibo('${url}', '${title.replace(/'/g, "\\'")}')" class="share-option">
+                <span class="share-icon">📢</span>
+                <span>分享到微博</span>
+              </button>
+              <button onclick="ShareManager.shareToTwitter('${url}', '${title.replace(/'/g, "\\'")}')" class="share-option">
+                <span class="share-icon">🐦</span>
+                <span>分享到Twitter</span>
+              </button>
+            </div>
+            <div class="share-link-preview">
+              <input type="text" value="${url}" readonly onclick="this.select()">
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(panel);
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'share-overlay';
+        overlay.id = 'share-overlay';
+        overlay.onclick = () => this.hide();
+        document.body.appendChild(overlay);
+        
+        setTimeout(() => overlay.classList.add('active'), 10);
+      },
+      
+      hide() {
+        const panel = document.getElementById('share-panel');
+        const overlay = document.getElementById('share-overlay');
+        if (panel) panel.remove();
+        if (overlay) overlay.remove();
+      },
+      
+      async copyLink(url) {
+        try {
+          await navigator.clipboard.writeText(url);
+          this.showToast('链接已复制！');
+        } catch (err) {
+          const input = document.querySelector('.share-link-preview input');
+          input.select();
+          document.execCommand('copy');
+          this.showToast('链接已复制！');
+        }
+        this.hide();
+      },
+      
+      shareToWeibo(url, title) {
+        const weiboUrl = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
+        window.open(weiboUrl, '_blank', 'width=600,height=400');
+        this.hide();
+      },
+      
+      shareToTwitter(url, title) {
+        const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`;
+        window.open(twitterUrl, '_blank', 'width=600,height=400');
+        this.hide();
+      },
+      
+      showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'share-toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => toast.classList.add('show'), 10);
+        setTimeout(() => {
+          toast.classList.remove('show');
+          setTimeout(() => toast.remove(), 300);
+        }, 2000);
+      }
+    };
+
+    // ==================== 工具函数 ====================
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ==================== 主题管理 ====================
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
+    themeToggle.addEventListener('click', () => {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      
+      // 添加切换动画
+      document.body.style.transition = 'background 0.3s, color 0.3s';
+    });
+
+    // ==================== 进度条 ====================
+    const progressBar = document.getElementById('progressBar');
+    
+    window.addEventListener('scroll', () => {
+      const scrollTop = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const scrollPercent = (scrollTop / docHeight) * 100;
+      progressBar.style.width = scrollPercent + '%';
+      
+      // 导航栏阴影效果
+      const navbar = document.getElementById('navbar');
+      if (scrollTop > 50) {
+        navbar.classList.add('scrolled');
+      } else {
+        navbar.classList.remove('scrolled');
+      }
+      
+      // 返回顶部按钮
+      const backToTop = document.getElementById('backToTop');
+      if (scrollTop > 300) {
+        backToTop.classList.add('visible');
+      } else {
+        backToTop.classList.remove('visible');
+      }
+    });
+
+    // ==================== 返回顶部 ====================
+    document.getElementById('backToTop').addEventListener('click', () => {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    });
+
+    // ==================== 文章渲染 ====================
+    function renderArticles(articles) {
+      const container = document.getElementById('articlesGrid');
+      const skeleton = document.getElementById('skeletonLoader');
+      
+      // 隐藏骨架屏
+      skeleton.style.display = 'none';
+      
+      // 清空并渲染文章
+      container.innerHTML = '';
+      
+      articles.forEach((article, index) => {
+        const articleEl = document.createElement('article');
+        articleEl.style.animationDelay = `${index * 0.1}s`;
+        articleEl.setAttribute('data-id', article.id);
+        
+        articleEl.innerHTML = `
+          <button class="share-btn" onclick="event.stopPropagation(); ShareManager.show(event, '${article.slug}', '${escapeHtml(article.title).replace(/'/g, "\\'")}')" title="分享">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+          </button>
+          <h2>${escapeHtml(article.title)}</h2>
+          <p class="summary">${escapeHtml(article.summary || article.content.substring(0, 150) + '...')}</p>
+          <div class="meta">
+            <span>📅 ${new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
+            <span>👁️ ${article.views || 0} 阅读</span>
+          </div>
+          ${article.tags ? `
+            <div class="tags">
+              ${article.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
+            </div>
+          ` : ''}
+        `;
+        
+        // 添加点击事件
+        articleEl.addEventListener('click', () => {
+          openArticleModal(article);
+        });
+        
+        // 悬停动画
+        articleEl.addEventListener('mouseenter', () => {
+          articleEl.style.transform = 'translateY(-4px)';
+        });
+        
+        articleEl.addEventListener('mouseleave', () => {
+          articleEl.style.transform = 'translateY(0)';
+        });
+        
+        container.appendChild(articleEl);
+      });
+    }
+
+    // ==================== 文章详情模态框 ====================
+    let currentArticle = null;
+    
+    function openArticleModal(article) {
+      const modal = document.getElementById('articleModal');
+      const content = document.getElementById('articleContent');
+      
+      // 保存当前文章信息用于分享
+      currentArticle = article;
+      
+      // 渲染内容
+      content.innerHTML = `
+        <div class="article-detail">
+          <h1>${escapeHtml(article.title)}</h1>
+          <div class="meta" style="margin-bottom: 2rem;">
+            <span>📅 ${new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
+            <span>👁️ ${article.views || 0} 阅读</span>
+          </div>
+          <div class="content">
+            ${marked.parse(article.content)}
+          </div>
+        </div>
+      `;
+      
+      // 代码高亮
+      content.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+      });
+      
+      // 显示模态框
+      modal.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    document.getElementById('closeModal').addEventListener('click', () => {
+      const modal = document.getElementById('articleModal');
+      modal.classList.remove('active');
+      document.body.style.overflow = '';
+    });
+    
+    // 分享文章按钮
+    document.getElementById('shareArticle').addEventListener('click', (e) => {
+      if (currentArticle) {
+        ShareManager.show(e, currentArticle.slug, currentArticle.title);
+      }
+    });
+
+    document.getElementById('articleModal').addEventListener('click', (e) => {
+      if (e.target.id === 'articleModal') {
+        document.getElementById('articleModal').classList.remove('active');
+        document.body.style.overflow = '';
+      }
+    });
+
+    // ==================== 搜索功能 ====================
+    const searchInput = document.getElementById('searchInput');
+    let searchTimeout;
+
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        const query = e.target.value.toLowerCase();
+        filterArticles(query);
+      }, 300);
+    });
+
+    function filterArticles(query) {
+      const articles = document.querySelectorAll('#articlesGrid article');
+      
+      articles.forEach(article => {
+        const title = article.querySelector('h2').textContent.toLowerCase();
+        const summary = article.querySelector('.summary').textContent.toLowerCase();
+        
+        if (title.includes(query) || summary.includes(query)) {
+          article.style.display = 'block';
+          article.style.animation = 'fadeInUp 0.3s ease-out';
+        } else {
+          article.style.display = 'none';
+        }
+      });
+    }
+
+    // ==================== 滚动显示动画 ====================
+    function initScrollReveal() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+          }
+        });
+      }, {
+        threshold: 0.1
+      });
+
+      document.querySelectorAll('.reveal').forEach(el => {
+        observer.observe(el);
+      });
+    }
+
+    // ==================== 加载文章 ====================
+    async function loadArticles() {
+      try {
+        const response = await fetch(`${API_BASE}/articles`);
+        const articles = await response.json();
+        renderArticles(articles);
+        initScrollReveal();
+      } catch (error) {
+        console.error('加载文章失败:', error);
+        document.getElementById('articlesGrid').innerHTML = `
+          <div class="empty-state">
+            <div class="icon">📝</div>
+            <p>暂无文章，请稍后再来~</p>
+          </div>
+        `;
+      }
+    }
+
+    // ==================== 初始化 ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      loadArticles();
+      
+      // 键盘快捷键
+      document.addEventListener('keydown', (e) => {
+        // ESC 关闭模态框
+        if (e.key === 'Escape') {
+          document.getElementById('articleModal').classList.remove('active');
+          document.body.style.overflow = '';
+        }
+        
+        // Ctrl+K 聚焦搜索
+        if (e.ctrlKey && e.key === 'k') {
+          e.preventDefault();
+          searchInput.focus();
+        }
+      });
+    });
+  </script>
 </body>
 </html>

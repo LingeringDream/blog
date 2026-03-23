@@ -239,6 +239,107 @@ const SyntaxHighlighter = {
   }
 };
 
+// ========== 分享功能 ==========
+const ShareManager = {
+  show(event, slug, title) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // 移除已存在的面板
+    this.hide();
+    
+    const url = `${window.location.origin}/post/${slug}`;
+    
+    const panel = document.createElement('div');
+    panel.className = 'share-panel';
+    panel.id = 'share-panel';
+    panel.innerHTML = `
+      <div class="share-content">
+        <div class="share-header">
+          <span>分享文章</span>
+          <button class="share-close" onclick="ShareManager.hide()">✕</button>
+        </div>
+        <div class="share-options">
+          <button onclick="ShareManager.copyLink('${url}')" class="share-option">
+            <span class="share-icon">🔗</span>
+            <span>复制链接</span>
+          </button>
+          <button onclick="ShareManager.shareToWeibo('${url}', '${title.replace(/'/g, "\\'")}')" class="share-option">
+            <span class="share-icon">📢</span>
+            <span>分享到微博</span>
+          </button>
+          <button onclick="ShareManager.shareToTwitter('${url}', '${title.replace(/'/g, "\\'")}')" class="share-option">
+            <span class="share-icon">🐦</span>
+            <span>分享到Twitter</span>
+          </button>
+        </div>
+        <div class="share-link-preview">
+          <input type="text" value="${url}" readonly onclick="this.select()">
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(panel);
+    
+    // 点击外部关闭
+    setTimeout(() => {
+      document.addEventListener('click', this.handleOutsideClick);
+    }, 10);
+  },
+  
+  hide() {
+    const panel = document.getElementById('share-panel');
+    if (panel) panel.remove();
+    document.removeEventListener('click', this.handleOutsideClick);
+  },
+  
+  handleOutsideClick(e) {
+    const panel = document.getElementById('share-panel');
+    if (panel && !panel.contains(e.target) && !e.target.closest('.share-btn')) {
+      ShareManager.hide();
+    }
+  },
+  
+  async copyLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      this.showToast('链接已复制！');
+    } catch (err) {
+      // Fallback
+      const input = document.querySelector('.share-link-preview input');
+      input.select();
+      document.execCommand('copy');
+      this.showToast('链接已复制！');
+    }
+    this.hide();
+  },
+  
+  shareToWeibo(url, title) {
+    const weiboUrl = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
+    window.open(weiboUrl, '_blank', 'width=600,height=400');
+    this.hide();
+  },
+  
+  shareToTwitter(url, title) {
+    const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`;
+    window.open(twitterUrl, '_blank', 'width=600,height=400');
+    this.hide();
+  },
+  
+  showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'share-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 2000);
+  }
+};
+
 // ========== 骨架屏加载 ==========
 const SkeletonLoader = {
   render(container, count = 6) {
@@ -305,6 +406,12 @@ const Blog = {
   renderPosts(posts, container) {
     container.innerHTML = posts.map(post => `
       <article class="post-card">
+        <button class="share-btn" onclick="ShareManager.show(event, '${escapeHtml(post.slug)}', '${escapeHtml(post.title)}')" title="分享">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+        </button>
         ${post.cover ? `<img src="${escapeHtml(post.cover)}" alt="${escapeHtml(post.title)}" loading="lazy">` : ''}
         <div class="post-card-content">
           <h2><a href="/post/${escapeHtml(post.slug)}">${escapeHtml(post.title)}</a></h2>

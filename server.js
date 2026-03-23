@@ -1,296 +1,138 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
-const crypto = require('crypto');
 
 const app = express();
-const db = new sqlite3.Database('./blog.db');
-
-// ========== 中间件 ==========
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-// ========== 数据库初始化 ==========
-db.serialize(() => {
-  // 文章表
-  db.run(`
-    CREATE TABLE IF NOT EXISTS posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      slug TEXT UNIQUE,
-      content TEXT NOT NULL,
-      summary TEXT,
-      cover TEXT,
-      published INTEGER DEFAULT 0,
-      views INTEGER DEFAULT 0,
-      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  // 设置表
-  db.run(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    )
-  `);
-  
-  // 索引
-  db.run('CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published, createdAt)');
-  
-  // 初始化默认设置
-  db.run(
-    'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
-    ['siteName', JSON.stringify('我的博客')]
-  );
-  db.run(
-    'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
-    ['siteDescription', JSON.stringify('探索技术与生活的精彩内容')]
-  );
-});
-
-// ========== 工具函数 ==========
-function generateSlug(title) {
-  return title
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .substring(0, 50) + '-' + Date.now().toString(36);
-}
-
-function authenticate(req, res, next) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json({ error: '未授权' });
-  }
-  
-  const token = auth.slice(7);
-  // 简单的 token 验证（生产环境应使用更安全的方式）
-  const adminToken = process.env.ADMIN_TOKEN || 'admin123';
-  if (token !== adminToken) {
-    return res.status(401).json({ error: '令牌无效' });
-  }
-  
-  next();
-}
-
-// ========== API 路由 ==========
-
-// 获取文章列表（支持分页）
-app.get('/api/posts', (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 6;
-  const all = req.query.all === 'true';
-  const offset = (page - 1) * limit;
-  
-  // 计算总数
-  db.get(
-    `SELECT COUNT(*) as total FROM posts ${all ? '' : 'WHERE published = 1'}`,
-    [],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: '服务器错误' });
-      
-      const total = result.total;
-      const totalPages = Math.ceil(total / limit);
-      
-      // 获取文章
-      db.all(
-        `SELECT id, title, slug, summary, cover, published, views, createdAt, updatedAt 
-         FROM posts 
-         ${all ? '' : 'WHERE published = 1'}
-         ORDER BY createdAt DESC 
-         LIMIT ? OFFSET ?`,
-        [limit, offset],
-        (err, posts) => {
-          if (err) return res.status(500).json({ error: '服务器错误' });
-          res.json({ posts, total, totalPages, currentPage: page });
-        }
-      );
-    }
-  );
-});
-
-// 获取单篇文章
-app.get('/api/posts/:slug', (req, res) => {
-  const { slug } = req.params;
-  
-  db.get(
-    'SELECT * FROM posts WHERE slug = ?',
-    [slug],
-    (err, post) => {
-      if (err) return res.status(500).json({ error: '服务器错误' });
-      if (!post) return res.status(404).json({ error: '文章未找到' });
-      
-      // 增加阅读量
-      db.run(
-        'UPDATE posts SET views = views + 1 WHERE slug = ?',
-        [slug]
-      );
-      
-      res.json({
-        ...post,
-        published: !!post.published
-      });
-    }
-  );
-});
-
-// 创建文章（需要认证）
-app.post('/api/posts', authenticate, (req, res) => {
-  const { title, slug, content, summary, cover, published } = req.body;
-  
-  if (!title || !content) {
-    return res.status(400).json({ error: '标题和内容不能为空' });
-  }
-  
-  const postSlug = slug || generateSlug(title);
-  
-  db.run(
-    `INSERT INTO posts (title, slug, content, summary, cover, published)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [title, postSlug, content, summary, cover, published ? 1 : 0],
-    function(err) {
-      if (err) {
-        if (err.code === 'SQLITE_CONSTRAINT') {
-          return res.status(400).json({ error: '该链接别名已存在' });
-        }
-        return res.status(500).json({ error: '创建失败' });
-      }
-      
-      res.status(201).json({ 
-        id: this.lastID, 
-        slug: postSlug,
-        message: '文章创建成功' 
-      });
-    }
-  );
-});
-
-// 更新文章（需要认证）
-app.put('/api/posts/:slug', authenticate, (req, res) => {
-  const { slug } = req.params;
-  const { title, content, summary, cover, published } = req.body;
-  
-  if (!title || !content) {
-    return res.status(400).json({ error: '标题和内容不能为空' });
-  }
-  
-  db.run(
-    `UPDATE posts 
-     SET title = ?, content = ?, summary = ?, cover = ?, published = ?, updatedAt = CURRENT_TIMESTAMP
-     WHERE slug = ?`,
-    [title, content, summary, cover, published ? 1 : 0, slug],
-    function(err) {
-      if (err) return res.status(500).json({ error: '更新失败' });
-      if (this.changes === 0) return res.status(404).json({ error: '文章未找到' });
-      
-      res.json({ message: '文章更新成功' });
-    }
-  );
-});
-
-// 删除文章（需要认证）
-app.delete('/api/posts/:slug', authenticate, (req, res) => {
-  const { slug } = req.params;
-  
-  db.run(
-    'DELETE FROM posts WHERE slug = ?',
-    [slug],
-    function(err) {
-      if (err) return res.status(500).json({ error: '删除失败' });
-      if (this.changes === 0) return res.status(404).json({ error: '文章未找到' });
-      
-      res.json({ message: '文章已删除' });
-    }
-  );
-});
-
-// 获取网站设置
-app.get('/api/settings', (req, res) => {
-  db.all('SELECT key, value FROM settings', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: '服务器错误' });
-    
-    const settings = {};
-    rows.forEach(row => {
-      try {
-        settings[row.key] = JSON.parse(row.value);
-      } catch {
-        settings[row.key] = row.value;
-      }
-    });
-    
-    res.json(settings);
-  });
-});
-
-// 更新网站设置（需要认证）
-app.put('/api/settings', authenticate, (req, res) => {
-  const updates = req.body;
-  const stmt = db.prepare(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
-  );
-  
-  Object.entries(updates).forEach(([key, value]) => {
-    stmt.run(key, JSON.stringify(value));
-  });
-  
-  stmt.finalize(err => {
-    if (err) return res.status(500).json({ error: '保存失败' });
-    res.json({ message: '设置已保存' });
-  });
-});
-
-// AI 封面生成（模拟）
-app.post('/api/generate-cover', authenticate, (req, res) => {
-  const { title } = req.body;
-  
-  // 使用 Unsplash 的随机图片作为封面
-  const keywords = title
-    .split(/\s+/)
-    .filter(w => w.length > 2)
-    .slice(0, 2)
-    .join(',');
-  
-  const seed = crypto.randomBytes(4).toString('hex');
-  const url = `https://source.unsplash.com/800x400/?${keywords || 'nature,tech'}&sig=${seed}`;
-  
-  res.json({ url });
-});
-
-// ========== 前端路由 ==========
-
-// 文章详情页
-app.get('/post/:slug', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'post.html'));
-});
-
-// 所有其他路由返回首页
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// ========== 错误处理 ==========
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: '服务器内部错误' });
-});
-
-// ========== 启动服务器 ==========
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`
-  🚀 博客服务器已启动
-  📦 本地访问: http://localhost:${PORT}
-  🔑 管理令牌: ${process.env.ADMIN_TOKEN || 'admin123'}
-  `);
+
+// 中间件
+app.use(express.json());
+app.use(express.static('public'));
+
+// 数据库初始化
+const db = new Database('./blog.db');
+
+// 创建表
+db.exec(`
+  CREATE TABLE IF NOT EXISTS articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    slug TEXT UNIQUE,
+    content TEXT NOT NULL,
+    summary TEXT,
+    tags TEXT,
+    views INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// 插入示例文章
+const insertArticle = db.prepare(`
+  INSERT OR IGNORE INTO articles (id, slug, title, content, summary, tags) VALUES 
+    (?, ?, ?, ?, ?, ?)
+`);
+
+insertArticle.run(
+  1, 
+  'welcome', 
+  '欢迎来到我的博客', 
+  '这是我的第一篇博客文章。\n\n## 关于这个博客\n\n这里是我分享技术和生活的地方。\n\n```javascript\nconsole.log("Hello World");\n```', 
+  '欢迎来到我的博客，这里是我分享技术和生活的地方。', 
+  '技术,生活'
+);
+
+insertArticle.run(
+  2, 
+  'javascript-tips', 
+  '学习 JavaScript 的小技巧', 
+  '## 1. 使用可选链操作符\n\n```javascript\nconst name = user?.profile?.name;\n```\n\n## 2. 解构赋值\n\n```javascript\nconst { name, age } = person;\n```', 
+  '分享一些实用的 JavaScript 编程技巧。', 
+  'JavaScript,编程'
+);
+
+insertArticle.run(
+  3, 
+  'css-animation', 
+  'CSS 动画指南', 
+  '## 过渡动画\n\n```css\n.box {\n  transition: transform 0.3s ease;\n}\n\n.box:hover {\n  transform: scale(1.1);\n}\n```\n\n## 关键帧动画\n\n```css\n@keyframes fadeIn {\n  from { opacity: 0; }\n  to { opacity: 1; }\n}\n```', 
+  '如何使用 CSS 创建流畅的动画效果。', 
+  'CSS,动画,前端'
+);
+
+// ==================== API 路由 ====================
+
+// 获取所有文章
+app.get('/api/articles', (req, res) => {
+  const rows = db.prepare('SELECT * FROM articles ORDER BY created_at DESC').all();
+  const articles = rows.map(row => ({
+    ...row,
+    tags: row.tags ? row.tags.split(',') : []
+  }));
+  res.json(articles);
 });
 
-// 优雅关闭
-process.on('SIGINT', () => {
-  db.close(() => {
-    console.log('\n数据库连接已关闭');
-    process.exit(0);
+// 获取单篇文章（通过slug）
+app.get('/api/articles/slug/:slug', (req, res) => {
+  const { slug } = req.params;
+  
+  // 更新阅读量
+  db.prepare('UPDATE articles SET views = views + 1 WHERE slug = ?').run(slug);
+  
+  const row = db.prepare('SELECT * FROM articles WHERE slug = ?').get(slug);
+  
+  if (!row) {
+    return res.status(404).json({ error: '文章未找到' });
+  }
+  
+  res.json({
+    ...row,
+    tags: row.tags ? row.tags.split(',') : []
   });
+});
+
+// 获取单篇文章（通过ID）
+app.get('/api/articles/:id', (req, res) => {
+  const { id } = req.params;
+  
+  // 更新阅读量
+  db.prepare('UPDATE articles SET views = views + 1 WHERE id = ?').run(id);
+  
+  const row = db.prepare('SELECT * FROM articles WHERE id = ?').get(id);
+  
+  if (!row) {
+    return res.status(404).json({ error: '文章未找到' });
+  }
+  
+  res.json({
+    ...row,
+    tags: row.tags ? row.tags.split(',') : []
+  });
+});
+
+// 搜索文章
+app.get('/api/search', (req, res) => {
+  const { q } = req.query;
+  
+  if (!q) {
+    return res.json([]);
+  }
+  
+  const rows = db.prepare(`
+    SELECT * FROM articles 
+    WHERE title LIKE ? OR content LIKE ? OR tags LIKE ?
+    ORDER BY created_at DESC
+  `).all(`%${q}%`, `%${q}%`, `%${q}%`);
+  
+  const articles = rows.map(row => ({
+    ...row,
+    tags: row.tags ? row.tags.split(',') : []
+  }));
+  
+  res.json(articles);
+});
+
+// 启动服务器
+app.listen(PORT, () => {
+  console.log(`博客服务器运行在 http://localhost:${PORT}`);
 });

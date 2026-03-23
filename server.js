@@ -92,6 +92,28 @@ app.get('/api/articles/slug/:slug', (req, res) => {
 });
 
 // 获取单篇文章（通过ID）
+// 搜索文章
+app.get('/api/search', (req, res) => {
+  const { q } = req.query;
+  
+  if (!q) {
+    return res.json([]);
+  }
+  
+  const searchTerm = `%${q}%`;
+  const rows = db.prepare(`
+    SELECT * FROM articles 
+    WHERE title LIKE ? OR content LIKE ? OR tags LIKE ?
+    ORDER BY created_at DESC
+  `).all(searchTerm, searchTerm, searchTerm);
+  
+  const articles = rows.map(row => ({
+    ...row,
+    tags: row.tags ? row.tags.split(',') : []
+  }));
+  
+  res.json(articles);
+});
 app.get('/api/articles/:id', (req, res) => {
   const { id } = req.params;
   

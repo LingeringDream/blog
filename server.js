@@ -1,13 +1,26 @@
 const express = require('express');
 const Database = require('better-sqlite3');
 const path = require('path');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BLOG_API_KEY = process.env.BLOG_API_KEY;
 
 // 中间件
 app.use(express.json());
 app.use(express.static('public'));
+
+// API Key 认证中间件
+function authenticateAPI(req, res, next) {
+  const apiKey = req.headers['x-api-key'] || req.query.apiKey;
+  
+  if (!apiKey || apiKey !== BLOG_API_KEY) {
+    return res.status(401).json({ error: '未授权：无效或缺失 API Key' });
+  }
+  
+  next();
+}
 
 // 数据库初始化
 const db = new Database('./blog.db');
@@ -152,6 +165,118 @@ app.get('/api/search', (req, res) => {
   }));
   
   res.json(articles);
+});
+
+// ==================== 文章管理 API (需要认证) ====================
+
+// 创建文章
+app.post('/api/articles', authenticateAPI, (req, res) => {
+  const { title, slug, content, summary, tags } = req.body;
+  
+  if (!title || !content) {
+    return res.status(400).json({ error: '标题和内容不能为空' });
+  }
+  
+  // 生成 slug（如果未提供）
+  const articleSlug = slug || title.toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+    .replace(/^-|-$/g, '');
+  
+  // 处理标签
+  const tagsStr = Array.isArray(tags) ? tags.join(',') : tags;
+  
+  try {
+    const result = db.prepare(`
+      INSERT INTO articles (title, slug, content, summary, tags)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(title, articleSlug, content, summary || '', tagsStr);
+    
+    const newArticle = db.prepare('SELECT * FROM articles WHERE id = ?').get(result.lastInsertRowid);
+    
+    res.status(201).json({
+      success: true,
+      message: '文章创建成功',
+      article: {
+        ...newArticle,
+        tags: newArticle.tags ? newArticle.tags.split(',') : []
+      }
+    });
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Slug 已存在，请使用不同的 slug' });
+    }
+    res.status(500).json({ error: '创建文章失败', details: err.message });
+  }
+});
+
+// 更新文章
+app.put('/api/articles/:id', authenticateAPI, (req, res) => {
+  const { id } = req.params;
+  const { title, slug, content, summary, tags } = req.body;
+  
+  const existing = db.prepare('SELECT * FROM articles WHERE id = ?').get(id);
+  if (!existing) {
+    return res.status(404).json({ error: '文章未找到' });
+  }
+  
+  // 处理标签
+  const tagsStr = tags !== undefined 
+    ? (Array.isArray(tags) ? tags.join(',') : tags) 
+    : existing.tags;
+  
+  try {
+    db.prepare(`
+      UPDATE articles 
+      SET title = ?, slug = ?, content = ?, summary = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      title || existing.title,
+      slug || existing.slug,
+      content || existing.content,
+      summary !== undefined ? summary : existing.summary,
+      tagsStr,
+      id
+    );
+    
+    const updated = db.prepare('SELECT * FROM articles WHERE id = ?').get(id);
+    
+    res.json({
+      success: true,
+      message: '文章更新成功',
+      article: {
+        ...updated,
+        tags: updated.tags ? updated.tags.split(',') : []
+      }
+    });
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Slug 已存在' });
+    }
+    res.status(500).json({ error: '更新文章失败', details: err.message });
+  }
+});
+
+// 删除文章
+app.delete('/api/articles/:id', authenticateAPI, (req, res) => {
+  const { id } = req.params;
+  
+  const existing = db.prepare('SELECT * FROM articles WHERE id = ?').get(id);
+  if (!existing) {
+    return res.status(404).json({ error: '文章未找到' });
+  }
+  
+  db.prepare('DELETE FROM articles WHERE id = ?').run(id);
+  
+  res.json({
+    success: true,
+    message: '文章删除成功',
+    deletedId: parseInt(id)
+  });
+});
+
+// API Key 验证接口（可选，用于测试）
+app.get('/api/verify', authenticateAPI, (req, res) => {
+  res.json({ success: true, message: 'API Key 验证成功' });
 });
 
 // 启动服务器

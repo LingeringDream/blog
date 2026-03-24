@@ -23,7 +23,8 @@ function authenticateAPI(req, res, next) {
 }
 
 // 数据库初始化
-const db = new Database('./blog.db');
+const dbPath = process.env.DB_PATH || './blog.db';
+const db = new Database(dbPath);
 
 // 创建表
 db.exec(`

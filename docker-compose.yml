@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  blog:
+    image: lingeringdream/blog:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BLOG_API_KEY=${BLOG_API_KEY}
+      - DB_PATH=/app/data/blog.db
+    volumes:
+      - blog-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  blog-data:

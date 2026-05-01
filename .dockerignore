@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+*.db
+*.db-wal
+*.db-shm
+data/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.md
+!README.md
+docker-compose*.yml

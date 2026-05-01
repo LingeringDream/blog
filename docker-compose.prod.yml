@@ -1,0 +1,65 @@
+# 生产部署（含 Nginx 反向代理 + Let's Encrypt SSL）
+# 使用方法：
+#   1. 复制 .env.production 为 .env 并填写域名和邮箱
+#   2. mkdir -p nginx/conf.d nginx/certbot
+#   3. 首次部署先用 HTTP 启动，再申请证书：
+#        docker compose -f docker-compose.prod.yml up -d
+#        docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+#          --webroot -w /var/www/certbot -d YOUR_DOMAIN --email YOUR_EMAIL --agree-tos -n
+#        docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+#   4. 后续更新：docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  blog:
+    build: .
+    container_name: blog-app
+    environment:
+      - NODE_ENV=production
+      - BLOG_API_KEY=${BLOG_API_KEY:-changeme}
+      - DB_PATH=/app/data/blog.db
+    volumes:
+      - blog-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/articles?limit=1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - blog-net
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: blog-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certbot/conf:/etc/letsencrypt:ro
+      - ./nginx/certbot/www:/var/www/certbot:ro
+    depends_on:
+      blog:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - blog-net
+
+  certbot:
+    image: certbot/certbot
+    container_name: blog-certbot
+    volumes:
+      - ./nginx/certbot/conf:/etc/letsencrypt
+      - ./nginx/certbot/www:/var/www/certbot
+    # 每 12 小时尝试续期
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
+    networks:
+      - blog-net
+
+volumes:
+  blog-data:
+
+networks:
+  blog-net:
+    driver: bridge

@@ -1,20 +1,27 @@
-version: '3.8'
+# 快速启动（无需 nginx）
+# 使用方法：
+#   1. 复制 .env.example 为 .env 并填写 BLOG_API_KEY
+#   2. docker compose up -d
 
 services:
   blog:
-    image: lingeringdream/blog:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
+    container_name: blog
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - BLOG_API_KEY=${BLOG_API_KEY}
+      - BLOG_API_KEY=${BLOG_API_KEY:-changeme}
       - DB_PATH=/app/data/blog.db
     volumes:
       - blog-data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/articles?limit=1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   blog-data:

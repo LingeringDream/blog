@@ -1,59 +1,69 @@
-// ========== 全局配置 ==========
+// ==================== 全局配置 ====================
 const CONFIG = {
   postsPerPage: 6,
   apiBase: '/api',
   storageKeys: {
     theme: 'blog-theme',
-    token: 'admin-token'
-  }
+    token: 'blog-admin-token',
+  },
 };
 
-// ========== 工具函数 ==========
+// ==================== 工具函数 ====================
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-// 防抖函数
 function debounce(fn, delay) {
   let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
-  };
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
 }
 
-// 格式化日期
 function formatDate(dateStr) {
-  const date = new Date(dateStr);
-  const options = { year: 'numeric', month: 'long', day: 'numeric' };
-  return date.toLocaleDateString('zh-CN', options);
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// 计算阅读时间
+function formatDateTime(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 function calculateReadTime(text) {
-  const wordsPerMinute = 500; // 中文阅读速度
-  const words = text.length;
-  const minutes = Math.ceil(words / wordsPerMinute);
-  return `${minutes} 分钟阅读`;
+  if (!text) return '1 分钟阅读';
+  const mins = Math.ceil(text.length / 500);
+  return `${mins} 分钟阅读`;
 }
 
-// HTML 转义
 function escapeHtml(text) {
+  if (!text) return '';
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
 
-// ========== 主题管理 ==========
+function authHeaders() {
+  const token = localStorage.getItem(CONFIG.storageKeys.token);
+  return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${CONFIG.apiBase}${path}`, options);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || '请求失败');
+  }
+  return res.json();
+}
+
+// ==================== 主题管理 ====================
 const ThemeManager = {
   init() {
     const saved = localStorage.getItem(CONFIG.storageKeys.theme);
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
     if (saved === 'dark' || (!saved && prefersDark)) {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
-    
-    this.addButton();
   },
 
   toggle() {
@@ -61,195 +71,59 @@ const ThemeManager = {
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem(CONFIG.storageKeys.theme, next);
-    this.updateIcon();
   },
 
-  addButton() {
-    const btn = document.createElement('button');
-    btn.className = 'theme-toggle';
-    btn.innerHTML = this.getIcon();
-    btn.onclick = () => this.toggle();
-    
-    const nav = document.querySelector('header nav');
-    if (nav) nav.prepend(btn);
+  bindButton(id) {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener('click', () => this.toggle());
   },
-
-  updateIcon() {
-    const btn = document.querySelector('.theme-toggle');
-    if (btn) btn.innerHTML = this.getIcon();
-  },
-
-  getIcon() {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    return isDark ? '☀️' : '🌙';
-  }
 };
 
-// ========== 阅读进度条 ==========
+// ==================== 阅读进度条 ====================
 const ReadingProgress = {
   init() {
-    if (!$('.post-detail')) return;
-    
-    this.progressBar = document.createElement('div');
-    this.progressBar.className = 'reading-progress';
-    document.body.prepend(this.progressBar);
-    
-    window.addEventListener('scroll', () => this.update());
-    this.update();
+    const bar = document.getElementById('progressBar');
+    if (!bar) return;
+    window.addEventListener('scroll', () => {
+      const docH = document.documentElement.scrollHeight - window.innerHeight;
+      bar.style.width = `${Math.min((window.scrollY / docH) * 100, 100)}%`;
+    });
   },
-
-  update() {
-    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-    const scrolled = window.scrollY;
-    const percent = (scrolled / docHeight) * 100;
-    this.progressBar.style.width = `${Math.min(percent, 100)}%`;
-  }
 };
 
-// ========== 返回顶部按钮 ==========
+// ==================== 返回顶部 ====================
 const BackToTop = {
-  init() {
-    this.button = document.createElement('button');
-    this.button.className = 'back-to-top';
-    this.button.innerHTML = '↑';
-    this.button.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
-    document.body.appendChild(this.button);
-    
-    window.addEventListener('scroll', debounce(() => this.toggle(), 100));
+  init(btnId) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    window.addEventListener('scroll', debounce(() => {
+      btn.classList.toggle('visible', window.scrollY > 300);
+    }, 100));
   },
-
-  toggle() {
-    if (window.scrollY > 300) {
-      this.button.classList.add('visible');
-    } else {
-      this.button.classList.remove('visible');
-    }
-  }
 };
 
-// ========== 目录生成 ==========
-const TOCGenerator = {
-  init() {
-    const content = $('.post-detail .content');
-    if (!content) return;
-    
-    const headings = content.querySelectorAll('h2, h3');
-    if (headings.length < 3) return; // 少于3个标题不显示目录
-    
-    this.generateTOC(headings);
-    this.observeActiveHeading(headings);
-  },
-
-  generateTOC(headings) {
-    const container = document.createElement('div');
-    container.className = 'toc-container';
-    container.innerHTML = '<h3>📑 目录</h3>';
-    
-    const list = document.createElement('ul');
-    
-    headings.forEach((heading, index) => {
-      const id = `heading-${index}`;
-      heading.id = id;
-      
-      const li = document.createElement('li');
-      const a = document.createElement('a');
-      a.href = `#${id}`;
-      a.textContent = heading.textContent;
-      a.className = heading.tagName === 'H3' ? 'toc-h3' : '';
-      
-      a.onclick = (e) => {
-        e.preventDefault();
-        heading.scrollIntoView({ behavior: 'smooth' });
-      };
-      
-      li.appendChild(a);
-      list.appendChild(li);
+// ==================== 面包屑导航栏滚动效果 ====================
+const Navbar = {
+  init(navId) {
+    const nav = document.getElementById(navId);
+    if (!nav) return;
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 50);
     });
-    
-    container.appendChild(list);
-    
-    // 插入到合适位置
-    const postDetail = $('.post-detail');
-    const wrapper = document.createElement('div');
-    wrapper.style.display = 'flex';
-    wrapper.style.gap = '2rem';
-    
-    const contentWrapper = document.createElement('div');
-    contentWrapper.style.flex = '1';
-    
-    postDetail.parentNode.insertBefore(wrapper, postDetail);
-    wrapper.appendChild(contentWrapper);
-    wrapper.appendChild(container);
-    
-    // 移动内容
-    while (postDetail.firstChild) {
-      contentWrapper.appendChild(postDetail.firstChild);
-    }
-    postDetail.remove();
   },
-
-  observeActiveHeading(headings) {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const id = entry.target.id;
-          $$('.toc-container a').forEach(a => {
-            a.classList.toggle('active', a.getAttribute('href') === `#${id}`);
-          });
-        }
-      });
-    }, { rootMargin: '-20% 0px -70% 0px' });
-    
-    headings.forEach(h => observer.observe(h));
-  }
 };
 
-// ========== 代码语法高亮 ==========
-const SyntaxHighlighter = {
-  keywords: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'class', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'new', 'this', 'true', 'false', 'null', 'undefined'],
-  
-  highlight(code) {
-    // 转义 HTML
-    let html = escapeHtml(code);
-    
-    // 注释
-    html = html.replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>');
-    html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="comment">$1</span>');
-    
-    // 字符串
-    html = html.replace(/(&quot;[^&]*&quot;|&#39;[^&]*&#39;|`[^`]*`)/g, '<span class="string">$1</span>');
-    
-    // 关键字
-    this.keywords.forEach(kw => {
-      const regex = new RegExp(`\\b(${kw})\\b`, 'g');
-      html = html.replace(regex, '<span class="keyword">$1</span>');
-    });
-    
-    // 数字
-    html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="number">$1</span>');
-    
-    return html;
-  },
-  
-  processCodeBlocks() {
-    $$('.post-detail .content pre code').forEach(block => {
-      const html = this.highlight(block.textContent);
-      block.innerHTML = html;
-    });
-  }
-};
-
-// ========== 分享功能 ==========
+// ==================== 分享功能 ====================
 const ShareManager = {
   show(event, slug, title) {
     event.preventDefault();
     event.stopPropagation();
-    
-    // 移除已存在的面板
     this.hide();
-    
-    const url = `${window.location.origin}/post/${slug}`;
-    
+
+    const url = `${window.location.origin}/post/${encodeURIComponent(slug)}`;
+    const safeTitle = encodeURIComponent(title);
+
     const panel = document.createElement('div');
     panel.className = 'share-panel';
     panel.id = 'share-panel';
@@ -257,327 +131,364 @@ const ShareManager = {
       <div class="share-content">
         <div class="share-header">
           <span>分享文章</span>
-          <button class="share-close" onclick="ShareManager.hide()">✕</button>
+          <button class="share-close" id="shareClose">✕</button>
         </div>
         <div class="share-options">
-          <button onclick="ShareManager.copyLink('${url}')" class="share-option">
-            <span class="share-icon">🔗</span>
-            <span>复制链接</span>
+          <button class="share-option" data-action="copy">
+            <span class="share-icon">🔗</span><span>复制链接</span>
           </button>
-          <button onclick="ShareManager.shareToWeibo('${url}', '${title.replace(/'/g, "\\'")}')" class="share-option">
-            <span class="share-icon">📢</span>
-            <span>分享到微博</span>
+          <button class="share-option" data-action="weibo">
+            <span class="share-icon">📢</span><span>分享到微博</span>
           </button>
-          <button onclick="ShareManager.shareToTwitter('${url}', '${title.replace(/'/g, "\\'")}')" class="share-option">
-            <span class="share-icon">🐦</span>
-            <span>分享到Twitter</span>
+          <button class="share-option" data-action="twitter">
+            <span class="share-icon">🐦</span><span>分享到 Twitter</span>
           </button>
         </div>
         <div class="share-link-preview">
-          <input type="text" value="${url}" readonly onclick="this.select()">
+          <input type="text" value="${url}" readonly>
         </div>
       </div>
     `;
-    
+
+    const overlay = document.createElement('div');
+    overlay.className = 'share-overlay active';
+    overlay.id = 'share-overlay';
+
+    document.body.appendChild(overlay);
     document.body.appendChild(panel);
-    
-    // 点击外部关闭
-    setTimeout(() => {
-      document.addEventListener('click', this.handleOutsideClick);
-    }, 10);
+
+    overlay.addEventListener('click', () => this.hide());
+    panel.querySelector('#shareClose').addEventListener('click', () => this.hide());
+
+    panel.querySelector('[data-action="copy"]').addEventListener('click', () => {
+      navigator.clipboard.writeText(url).then(() => this.showToast('链接已复制！')).catch(() => {
+        const input = panel.querySelector('.share-link-preview input');
+        input.select();
+        document.execCommand('copy');
+        this.showToast('链接已复制！');
+      });
+      this.hide();
+    });
+
+    panel.querySelector('[data-action="weibo"]').addEventListener('click', () => {
+      window.open(`https://service.weibo.com/share/share.php?url=${url}&title=${safeTitle}`, '_blank', 'width=600,height=400');
+      this.hide();
+    });
+
+    panel.querySelector('[data-action="twitter"]').addEventListener('click', () => {
+      window.open(`https://twitter.com/intent/tweet?url=${url}&text=${safeTitle}`, '_blank', 'width=600,height=400');
+      this.hide();
+    });
   },
-  
+
   hide() {
     const panel = document.getElementById('share-panel');
+    const overlay = document.getElementById('share-overlay');
     if (panel) panel.remove();
-    document.removeEventListener('click', this.handleOutsideClick);
+    if (overlay) overlay.remove();
   },
-  
-  handleOutsideClick(e) {
-    const panel = document.getElementById('share-panel');
-    if (panel && !panel.contains(e.target) && !e.target.closest('.share-btn')) {
-      ShareManager.hide();
-    }
-  },
-  
-  async copyLink(url) {
-    try {
-      await navigator.clipboard.writeText(url);
-      this.showToast('链接已复制！');
-    } catch (err) {
-      // Fallback
-      const input = document.querySelector('.share-link-preview input');
-      input.select();
-      document.execCommand('copy');
-      this.showToast('链接已复制！');
-    }
-    this.hide();
-  },
-  
-  shareToWeibo(url, title) {
-    const weiboUrl = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
-    window.open(weiboUrl, '_blank', 'width=600,height=400');
-    this.hide();
-  },
-  
-  shareToTwitter(url, title) {
-    const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`;
-    window.open(twitterUrl, '_blank', 'width=600,height=400');
-    this.hide();
-  },
-  
+
   showToast(message) {
     const toast = document.createElement('div');
     toast.className = 'share-toast';
     toast.textContent = message;
     document.body.appendChild(toast);
-    
     setTimeout(() => toast.classList.add('show'), 10);
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 300);
-    }, 2000);
-  }
+    setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 2000);
+  },
 };
 
-// ========== 骨架屏加载 ==========
+// ==================== 骨架屏 ====================
 const SkeletonLoader = {
-  render(container, count = 6) {
-    container.innerHTML = Array(count).fill(`
-      <div class="skeleton-card">
-        <div class="skeleton skeleton-img"></div>
+  show(container) {
+    container.innerHTML = Array(3).fill(`
+      <article class="skeleton-article">
+        <div class="skeleton skeleton-title"></div>
         <div class="skeleton skeleton-text"></div>
-        <div class="skeleton skeleton-text-sm"></div>
-      </div>
+        <div class="skeleton skeleton-text"></div>
+        <div class="skeleton skeleton-text" style="width:60%"></div>
+      </article>
     `).join('');
   },
-  
-  clear(container) {
-    container.innerHTML = '';
-  }
+  hide(container) {
+    container.querySelectorAll('.skeleton-article').forEach(el => el.remove());
+  },
 };
 
-// ========== 博客前端功能 ==========
+// ==================== 博客首页 ====================
 const Blog = {
   currentPage: 1,
   totalPages: 1,
 
   async init() {
-    // 检查是否在文章详情页
-    const slug = this.getSlugFromPath();
-    if (slug) {
-      await this.loadPost(slug);
-    } else {
-      await this.loadPosts();
-    }
-    
-    // 初始化通用组件
+    await this.loadArticles();
+    this.bindSearch();
+    this.bindKeyboard();
+    Navbar.init('navbar');
     ThemeManager.init();
+    ThemeManager.bindButton('themeToggle');
     ReadingProgress.init();
-    BackToTop.init();
+    BackToTop.init('backToTop');
   },
 
-  getSlugFromPath() {
-    const path = window.location.pathname;
-    const match = path.match(/\/post\/(.+)$/);
-    return match ? match[1] : null;
-  },
+  async loadArticles(page = 1) {
+    const grid = document.getElementById('articlesGrid');
+    const skeleton = document.getElementById('skeletonLoader');
+    if (!grid) return;
 
-  async loadPosts(page = 1) {
-    const container = $('#posts-container');
-    if (!container) return;
-    
-    SkeletonLoader.render(container);
-    
+    if (skeleton) skeleton.style.display = '';
     try {
-      const res = await fetch(`${CONFIG.apiBase}/posts?page=${page}&limit=${CONFIG.postsPerPage}`);
-      const data = await res.json();
-      
-      SkeletonLoader.clear(container);
-      this.renderPosts(data.posts, container);
+      const data = await apiFetch(`/articles?page=${page}&limit=${CONFIG.postsPerPage}`);
+      if (skeleton) skeleton.style.display = 'none';
+      this.currentPage = data.page;
       this.totalPages = data.totalPages;
-      this.renderPagination(container);
+      this.renderArticles(data.articles, grid);
+      this.renderPagination();
     } catch (err) {
-      container.innerHTML = '<p class="error">加载失败，请刷新重试</p>';
-      console.error('Load posts error:', err);
+      if (skeleton) skeleton.style.display = 'none';
+      grid.innerHTML = '<div class="empty-state"><div class="icon">📝</div><p>加载失败，请刷新重试</p></div>';
+      console.error('Load articles error:', err);
     }
   },
 
-  renderPosts(posts, container) {
-    container.innerHTML = posts.map(post => `
-      <article class="post-card">
-        <button class="share-btn" onclick="ShareManager.show(event, '${escapeHtml(post.slug)}', '${escapeHtml(post.title)}')" title="分享">
+  renderArticles(articles, container) {
+    container.innerHTML = articles.map((a, i) => `
+      <article style="animation-delay:${i * 0.1}s" data-slug="${escapeHtml(a.slug)}">
+        <button class="share-btn" data-slug="${escapeHtml(a.slug)}" data-title="${escapeHtml(a.title)}" title="分享">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
         </button>
-        ${post.cover ? `<img src="${escapeHtml(post.cover)}" alt="${escapeHtml(post.title)}" loading="lazy">` : ''}
-        <div class="post-card-content">
-          <h2><a href="/post/${escapeHtml(post.slug)}">${escapeHtml(post.title)}</a></h2>
-          <p>${escapeHtml(post.summary || '')}</p>
-          <span class="date">${formatDate(post.createdAt)}</span>
+        <h2>${escapeHtml(a.title)}</h2>
+        <p class="summary">${escapeHtml(a.summary || a.content.substring(0, 150) + '...')}</p>
+        <div class="meta">
+          <span>📅 ${formatDate(a.createdAt)}</span>
+          <span>👁️ ${a.views || 0} 阅读</span>
         </div>
+        ${a.tags.length ? `<div class="tags">${a.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
       </article>
     `).join('');
+
+    // 绑定事件（事件委托）
+    container.addEventListener('click', (e) => {
+      const shareBtn = e.target.closest('.share-btn');
+      if (shareBtn) {
+        ShareManager.show(e, shareBtn.dataset.slug, shareBtn.dataset.title);
+        return;
+      }
+      const article = e.target.closest('article');
+      if (article) {
+        window.location.href = `/post/${encodeURIComponent(article.dataset.slug)}`;
+      }
+    });
   },
 
-  renderPagination(container) {
-    if (this.totalPages <= 1) return;
-    
-    const pagination = document.createElement('div');
-    pagination.className = 'pagination';
-    
-    pagination.innerHTML = `
-      <button ${this.currentPage === 1 ? 'disabled' : ''} onclick="Blog.loadPosts(${this.currentPage - 1})">
-        ← 上一页
-      </button>
+  renderPagination() {
+    const container = document.getElementById('pagination');
+    if (!container || this.totalPages <= 1) { if (container) container.innerHTML = ''; return; }
+
+    container.innerHTML = `
+      <button ${this.currentPage === 1 ? 'disabled' : ''} id="prevPage">← 上一页</button>
       <span class="page-num">${this.currentPage} / ${this.totalPages}</span>
-      <button ${this.currentPage === this.totalPages ? 'disabled' : ''} onclick="Blog.loadPosts(${this.currentPage + 1})">
-        下一页 →
-      </button>
+      <button ${this.currentPage === this.totalPages ? 'disabled' : ''} id="nextPage">下一页 →</button>
     `;
-    
-    container.appendChild(pagination);
+    const prev = document.getElementById('prevPage');
+    const next = document.getElementById('nextPage');
+    if (prev) prev.addEventListener('click', () => this.loadArticles(this.currentPage - 1));
+    if (next) next.addEventListener('click', () => this.loadArticles(this.currentPage + 1));
+  },
+
+  bindSearch() {
+    const input = document.getElementById('searchInput');
+    if (!input) return;
+    input.addEventListener('input', debounce(async (e) => {
+      const q = e.target.value.trim();
+      const grid = document.getElementById('articlesGrid');
+      const pagination = document.getElementById('pagination');
+      if (!grid) return;
+
+      if (!q) {
+        await this.loadArticles();
+        return;
+      }
+
+      try {
+        const articles = await apiFetch(`/articles/search?q=${encodeURIComponent(q)}`);
+        this.renderArticles(articles, grid);
+        if (pagination) pagination.innerHTML = '';
+      } catch (err) {
+        console.error('Search error:', err);
+      }
+    }, 300));
+  },
+
+  bindKeyboard() {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('articleModal');
+        if (modal) { modal.classList.remove('active'); document.body.style.overflow = ''; }
+      }
+      if (e.ctrlKey && e.key === 'k') {
+        e.preventDefault();
+        const input = document.getElementById('searchInput');
+        if (input) input.focus();
+      }
+    });
+  },
+};
+
+// ==================== 文章详情页 ====================
+const PostPage = {
+  async init() {
+    const slug = this.getSlug();
+    if (!slug) return;
+
+    Navbar.init('navbar');
+    ThemeManager.init();
+    ThemeManager.bindButton('themeToggle');
+    BackToTop.init('backToTop');
+    ReadingProgress.init();
+
+    await this.loadPost(slug);
+  },
+
+  getSlug() {
+    const match = window.location.pathname.match(/\/post\/(.+)$/);
+    return match ? decodeURIComponent(match[1]) : null;
   },
 
   async loadPost(slug) {
-    const container = $('#post-content');
+    const container = document.getElementById('post-content');
     if (!container) return;
-    
+
     try {
-      const res = await fetch(`${CONFIG.apiBase}/posts/${slug}`);
-      if (!res.ok) throw new Error('Post not found');
-      
-      const post = await res.json();
-      
-      document.title = `${post.title} - ${document.title}`;
-      
-      // 渲染元信息
-      const meta = $('.post-detail .meta');
+      const post = await apiFetch(`/articles/slug/${encodeURIComponent(slug)}`);
+
+      document.title = `${post.title} - 我的博客`;
+
+      // OG tags
+      const setMeta = (prop, val) => {
+        let el = document.querySelector(`meta[property="${prop}"]`);
+        if (!el) { el = document.createElement('meta'); el.setAttribute('property', prop); document.head.appendChild(el); }
+        el.setAttribute('content', val);
+      };
+      setMeta('og:title', post.title);
+      setMeta('og:description', post.summary || '');
+      if (post.cover) setMeta('og:image', post.cover);
+
+      // 元信息
+      const meta = document.getElementById('post-meta');
       if (meta) {
         meta.innerHTML = `
           <span>📅 ${formatDate(post.createdAt)}</span>
           <span>⏱️ ${calculateReadTime(post.content)}</span>
+          <span>👁️ ${post.views} 阅读</span>
           ${post.updatedAt !== post.createdAt ? `<span>✏️ 更新于 ${formatDate(post.updatedAt)}</span>` : ''}
         `;
       }
-      
-      // 渲染封面
-      if (post.cover) {
-        const coverContainer = $('.cover-container');
-        if (coverContainer) {
-          coverContainer.innerHTML = `<img src="${escapeHtml(post.cover)}" alt="${escapeHtml(post.title)}" class="cover-image">`;
-        }
+
+      // 封面
+      const cover = document.getElementById('cover-container');
+      if (cover && post.cover) {
+        cover.innerHTML = `<img src="${escapeHtml(post.cover)}" alt="${escapeHtml(post.title)}" class="cover-image">`;
       }
-      
-      // 渲染内容（简单 Markdown）
-      container.innerHTML = this.parseMarkdown(post.content);
-      
-      // 初始化文章页功能
-      TOCGenerator.init();
-      SyntaxHighlighter.processCodeBlocks();
-      
+
+      // 标题
+      const title = document.getElementById('post-title');
+      if (title) title.textContent = post.title;
+
+      // 标签
+      const tagsEl = document.getElementById('post-tags');
+      if (tagsEl && post.tags.length) {
+        tagsEl.innerHTML = post.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+      }
+
+      // 渲染 Markdown
+      container.innerHTML = marked.parse(post.content);
+
+      // 代码高亮
+      container.querySelectorAll('pre code').forEach(block => {
+        hljs.highlightElement(block);
+      });
+
+      // 目录
+      this.generateTOC(container);
+
     } catch (err) {
       container.innerHTML = `
-        <div class="error">
+        <div class="error" style="text-align:center;padding:4rem 2rem;">
           <h1>文章未找到</h1>
-          <p><a href="/">返回首页</a></p>
+          <p style="margin-top:1rem;"><a href="/">← 返回首页</a></p>
         </div>
       `;
     }
   },
 
-  parseMarkdown(text) {
-    if (!text) return '';
-    
-    let html = escapeHtml(text);
-    
-    // 代码块
-    html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
-      return `<pre data-lang="${lang || ''}"><code>${code.trim()}</code></pre>`;
+  generateTOC(contentEl) {
+    const headings = contentEl.querySelectorAll('h2, h3');
+    if (headings.length < 3) return;
+
+    const toc = document.createElement('div');
+    toc.className = 'toc';
+    toc.innerHTML = '<div class="toc-title">📑 目录</div><ul></li>';
+    const list = toc.querySelector('ul');
+
+    headings.forEach((h, i) => {
+      const id = `heading-${i}`;
+      h.id = id;
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = `#${id}`;
+      a.textContent = h.textContent;
+      a.className = h.tagName === 'H3' ? 'toc-h3' : '';
+      a.addEventListener('click', (e) => { e.preventDefault(); h.scrollIntoView({ behavior: 'smooth' }); });
+      li.appendChild(a);
+      list.appendChild(li);
     });
-    
-    // 行内代码
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
-    // 标题
-    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-    
-    // 粗体和斜体
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    
-    // 引用
-    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-    
-    // 链接
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    
-    // 图片
-    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy">');
-    
-    // 无序列表
-    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-    
-    // 有序列表
-    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-    
-    // 分割线
-    html = html.replace(/^---$/gm, '<hr>');
-    
-    // 段落
-    html = html.split(/\n\n+/).map(block => {
-      if (block.match(/^<(h[1-6]|ul|ol|li|blockquote|pre|hr)/)) {
-        return block;
-      }
-      return `<p>${block}</p>`;
-    }).join('\n');
-    
-    return html;
-  }
+
+    document.body.appendChild(toc);
+
+    // 高亮当前标题
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          toc.querySelectorAll('a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#${entry.target.id}`));
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    headings.forEach(h => observer.observe(h));
+  },
 };
 
-// ========== 管理后台功能 ==========
+// ==================== 管理后台 ====================
 const Admin = {
   token: null,
-  currentPost: null,
+  editingPost: null,
 
   init() {
     this.token = localStorage.getItem(CONFIG.storageKeys.token);
     ThemeManager.init();
+    this.checkAuth();
   },
 
   checkAuth() {
-    if (this.token) {
-      this.showPanel();
-    }
+    if (this.token) this.showPanel();
   },
 
   async login() {
-    const token = $('#admin-token').value.trim();
-    if (!token) {
-      alert('请输入令牌');
-      return;
-    }
-    
+    const input = document.getElementById('admin-token');
+    if (!input) return;
+    const token = input.value.trim();
+    if (!token) { alert('请输入令牌'); return; }
+
     try {
-      const res = await fetch(`${CONFIG.apiBase}/posts`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (res.ok) {
-        this.token = token;
-        localStorage.setItem(CONFIG.storageKeys.token, token);
-        this.showPanel();
-      } else {
-        alert('令牌无效');
-      }
-    } catch (err) {
-      alert('登录失败');
+      await apiFetch('/verify', { headers: { 'Authorization': `Bearer ${token}` } });
+      this.token = token;
+      localStorage.setItem(CONFIG.storageKeys.token, token);
+      this.showPanel();
+    } catch {
+      alert('令牌无效');
     }
   },
 
@@ -588,222 +499,191 @@ const Admin = {
   },
 
   async showPanel() {
-    $('#login-screen').classList.add('hidden');
-    $('#admin-panel').classList.remove('hidden');
-    
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('admin-panel').classList.remove('hidden');
     await this.loadPosts();
     await this.loadSettings();
+    this.bindEditor();
   },
 
   async loadPosts() {
-    const container = $('#admin-posts');
+    const container = document.getElementById('admin-posts');
+    if (!container) return;
     container.innerHTML = '<p>加载中...</p>';
-    
+
     try {
-      const res = await fetch(`${CONFIG.apiBase}/posts?all=true`, {
-        headers: { 'Authorization': `Bearer ${this.token}` }
-      });
-      const posts = await res.json();
-      
-      container.innerHTML = posts.map(post => `
+      const data = await apiFetch('/admin/articles', { headers: { 'Authorization': `Bearer ${this.token}` } });
+      container.innerHTML = data.articles.map(p => `
         <div class="admin-post-item">
           <div class="post-info">
-            <h3>${escapeHtml(post.title)}</h3>
-            <span>${formatDate(post.createdAt)} · ${post.published ? '✅ 已发布' : '📝 草稿'}</span>
+            <h3>${escapeHtml(p.title)}</h3>
+            <span>${formatDate(p.createdAt)} · ${p.published ? '✅ 已发布' : '📝 草稿'}</span>
           </div>
           <div>
-            <button class="btn-secondary" onclick="Admin.editPost('${post.slug}')">编辑</button>
-            <button class="btn-danger" onclick="Admin.deletePost('${post.slug}')">删除</button>
+            <button class="btn-secondary" onclick="Admin.editPost(${p.id})">编辑</button>
+            <button class="btn-danger" onclick="Admin.deletePost(${p.id})">删除</button>
           </div>
         </div>
-      `).join('');
+      `).join('') || '<p class="empty-state">暂无文章</p>';
     } catch (err) {
       container.innerHTML = '<p>加载失败</p>';
+      console.error(err);
     }
   },
 
   async loadSettings() {
     try {
-      const res = await fetch(`${CONFIG.apiBase}/settings`);
-      const settings = await res.json();
-      
-      $('#setting-site-name').value = settings.siteName || '';
-      $('#setting-site-desc').value = settings.siteDescription || '';
+      const settings = await apiFetch('/settings');
+      const nameEl = document.getElementById('setting-site-name');
+      const descEl = document.getElementById('setting-site-desc');
+      if (nameEl) nameEl.value = settings.siteName || '';
+      if (descEl) descEl.value = settings.siteDescription || '';
     } catch (err) {
       console.error('Load settings error:', err);
     }
   },
 
+  bindEditor() {
+    const titleInput = document.getElementById('post-title');
+    const coverInput = document.getElementById('post-cover');
+    if (titleInput) titleInput.addEventListener('input', debounce(() => this.updateSlugPreview(), 300));
+    if (coverInput) coverInput.addEventListener('input', debounce(() => this.updateCoverPreview(), 300));
+  },
+
   showTab(tabId) {
-    $$('.tab-content').forEach(el => el.classList.add('hidden'));
-    $$('.tab').forEach(el => el.classList.remove('active'));
-    
-    $(`#tab-${tabId}`).classList.remove('hidden');
-    event.target.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+    const tab = document.getElementById(`tab-${tabId}`);
+    if (tab) tab.classList.remove('hidden');
+    if (event && event.target) event.target.classList.add('active');
   },
 
   showEditor(post = null) {
-    this.currentPost = post;
-    
-    $('#post-title').value = post?.title || '';
-    $('#post-slug').value = post?.slug || '';
-    $('#post-content').value = post?.content || '';
-    $('#post-summary').value = post?.summary || '';
-    $('#post-cover').value = post?.cover || '';
-    $('#post-published').checked = post?.published || false;
-    
-    if (post?.cover) {
-      $('#cover-preview').innerHTML = `<img src="${escapeHtml(post.cover)}">`;
-    } else {
-      $('#cover-preview').innerHTML = '';
-    }
-    
-    $('#editor-panel').classList.remove('hidden');
+    this.editingPost = post;
+    document.getElementById('post-title').value = post?.title || '';
+    document.getElementById('post-slug').value = post?.slug || '';
+    document.getElementById('post-content').value = post?.content || '';
+    document.getElementById('post-summary').value = post?.summary || '';
+    document.getElementById('post-cover').value = post?.cover || '';
+    document.getElementById('post-published').checked = post?.published ?? true;
+    this.updateCoverPreview();
+    document.getElementById('editor-panel').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
   },
 
   hideEditor() {
-    $('#editor-panel').classList.add('hidden');
+    document.getElementById('editor-panel').classList.add('hidden');
     document.body.style.overflow = '';
-    this.currentPost = null;
+    this.editingPost = null;
   },
 
-  async editPost(slug) {
+  updateSlugPreview() {
+    const title = document.getElementById('post-title').value;
+    const slugInput = document.getElementById('post-slug');
+    if (slugInput && !slugInput.dataset.manual) {
+      slugInput.placeholder = title.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '') || '留空则自动生成';
+    }
+  },
+
+  updateCoverPreview() {
+    const url = document.getElementById('post-cover').value.trim();
+    const preview = document.getElementById('cover-preview');
+    if (preview) preview.innerHTML = url ? `<img src="${escapeHtml(url)}" alt="封面预览">` : '';
+  },
+
+  async editPost(id) {
     try {
-      const res = await fetch(`${CONFIG.apiBase}/posts/${slug}`, {
-        headers: { 'Authorization': `Bearer ${this.token}` }
-      });
-      const post = await res.json();
-      this.showEditor(post);
-    } catch (err) {
+      const data = await apiFetch('/admin/articles', { headers: { 'Authorization': `Bearer ${this.token}` } });
+      const post = data.articles.find(a => a.id === id);
+      if (post) this.showEditor(post);
+    } catch {
       alert('加载文章失败');
     }
   },
 
   async savePost() {
-    const post = {
-      title: $('#post-title').value.trim(),
-      slug: $('#post-slug').value.trim() || undefined,
-      content: $('#post-content').value,
-      summary: $('#post-summary').value.trim(),
-      cover: $('#post-cover').value.trim(),
-      published: $('#post-published').checked
+    const title = document.getElementById('post-title').value.trim();
+    const content = document.getElementById('post-content').value;
+    if (!title || !content) { alert('标题和内容不能为空'); return; }
+
+    const body = {
+      title,
+      slug: document.getElementById('post-slug').value.trim() || undefined,
+      content,
+      summary: document.getElementById('post-summary').value.trim(),
+      cover: document.getElementById('post-cover').value.trim(),
+      published: document.getElementById('post-published').checked,
     };
-    
-    if (!post.title || !post.content) {
-      alert('标题和内容不能为空');
-      return;
-    }
-    
+
+    const isEdit = !!this.editingPost;
+    const url = isEdit ? `/articles/${this.editingPost.id}` : '/articles';
+
     try {
-      const url = this.currentPost 
-        ? `${CONFIG.apiBase}/posts/${this.currentPost.slug}`
-        : `${CONFIG.apiBase}/posts`;
-      
-      const res = await fetch(url, {
-        method: this.currentPost ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: JSON.stringify(post)
+      await apiFetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
-      
-      if (res.ok) {
-        this.hideEditor();
-        this.loadPosts();
-      } else {
-        alert('保存失败');
-      }
+      this.hideEditor();
+      await this.loadPosts();
     } catch (err) {
-      alert('保存失败');
+      alert(`保存失败: ${err.message}`);
     }
   },
 
-  async deletePost(slug) {
+  async deletePost(id) {
     if (!confirm('确定删除这篇文章？')) return;
-    
     try {
-      const res = await fetch(`${CONFIG.apiBase}/posts/${slug}`, {
+      await apiFetch(`/articles/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${this.token}` }
+        headers: { 'Authorization': `Bearer ${this.token}` },
       });
-      
-      if (res.ok) {
-        this.loadPosts();
-      } else {
-        alert('删除失败');
-      }
+      await this.loadPosts();
     } catch (err) {
-      alert('删除失败');
+      alert(`删除失败: ${err.message}`);
     }
   },
 
   async saveSettings() {
     const settings = {
-      siteName: $('#setting-site-name').value.trim(),
-      siteDescription: $('#setting-site-desc').value.trim()
+      siteName: document.getElementById('setting-site-name').value.trim(),
+      siteDescription: document.getElementById('setting-site-desc').value.trim(),
     };
-    
     try {
-      const res = await fetch(`${CONFIG.apiBase}/settings`, {
+      await apiFetch('/settings', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: JSON.stringify(settings)
+        headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
       });
-      
-      if (res.ok) {
-        alert('设置已保存');
-      } else {
-        alert('保存失败');
-      }
+      alert('设置已保存');
     } catch (err) {
-      alert('保存失败');
+      alert(`保存失败: ${err.message}`);
     }
   },
 
   async generateCover() {
-    const title = $('#post-title').value.trim();
-    if (!title) {
-      alert('请先输入文章标题');
-      return;
-    }
-    
-    $('#cover-preview').innerHTML = '<p>生成中...</p>';
-    
-    try {
-      const res = await fetch(`${CONFIG.apiBase}/generate-cover`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: JSON.stringify({ title })
-      });
-      
-      const data = await res.json();
-      
-      if (data.url) {
-        $('#post-cover').value = data.url;
-        $('#cover-preview').innerHTML = `<img src="${escapeHtml(data.url)}">`;
-      } else {
-        throw new Error('No URL');
-      }
-    } catch (err) {
-      $('#cover-preview').innerHTML = '<p style="color:red">生成失败</p>';
-    }
-  }
+    const title = document.getElementById('post-title').value.trim();
+    if (!title) { alert('请先输入文章标题'); return; }
+    const preview = document.getElementById('cover-preview');
+    if (preview) preview.innerHTML = '<p>生成中...</p>';
+    // TODO: 接入 BizyAir API
+    alert('AI 封面生成功能尚未实现，请手动输入封面图片 URL');
+    if (preview) preview.innerHTML = '';
+  },
 };
 
-// ========== 初始化 ==========
+// ==================== 初始化 ====================
 document.addEventListener('DOMContentLoaded', () => {
-  if ($('#posts-container') || $('#post-content')) {
+  // 博客首页
+  if (document.getElementById('articlesGrid')) {
     Blog.init();
   }
-  if ($('#login-screen')) {
+  // 文章详情页
+  if (document.getElementById('post-content') && !document.getElementById('articlesGrid')) {
+    PostPage.init();
+  }
+  // 管理后台
+  if (document.getElementById('login-screen')) {
     Admin.init();
   }
 });

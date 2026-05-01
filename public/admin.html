@@ -12,11 +12,12 @@
     <div class="login-box">
       <h2>🔐 管理后台</h2>
       <p class="login-hint">输入管理员令牌登录</p>
-      <input type="password" id="admin-token" placeholder="输入令牌" onkeypress="if(event.key==='Enter')Admin.login()">
+      <input type="password" id="admin-token" placeholder="输入令牌"
+        onkeypress="if(event.key==='Enter') Admin.login()">
       <button onclick="Admin.login()">登录</button>
     </div>
   </div>
-  
+
   <!-- 管理面板 -->
   <div id="admin-panel" class="admin-panel hidden">
     <header>
@@ -28,37 +29,35 @@
         </nav>
       </div>
     </header>
-    
-    <main class="container" style="padding-top: 2rem;">
+
+    <main class="container" style="padding-top:2rem;">
       <!-- 标签页 -->
       <div class="tabs">
         <button class="tab active" onclick="Admin.showTab('posts')">文章管理</button>
         <button class="tab" onclick="Admin.showTab('settings')">网站设置</button>
       </div>
-      
+
       <!-- 文章管理 -->
       <div id="tab-posts" class="tab-content">
-        <div style="margin-bottom: 1.5rem;">
+        <div style="margin-bottom:1.5rem;">
           <button class="btn-primary" onclick="Admin.showEditor()">+ 新建文章</button>
         </div>
         <div class="admin-posts" id="admin-posts"></div>
       </div>
-      
+
       <!-- 网站设置 -->
       <div id="tab-settings" class="tab-content hidden">
         <form class="settings-form" onsubmit="event.preventDefault(); Admin.saveSettings();">
           <label>网站名称</label>
           <input type="text" id="setting-site-name" placeholder="我的博客">
-          
           <label>网站描述</label>
           <textarea id="setting-site-desc" placeholder="关于这个网站的简短描述..."></textarea>
-          
           <button type="submit" class="btn-primary">保存设置</button>
         </form>
       </div>
     </main>
   </div>
-  
+
   <!-- 文章编辑器 -->
   <div id="editor-panel" class="editor-panel hidden">
     <div class="editor-header">
@@ -68,7 +67,7 @@
         <button class="btn-primary" onclick="Admin.savePost()">保存</button>
       </div>
     </div>
-    
+
     <div class="editor-body">
       <div class="editor-main">
         <input type="text" id="post-title" placeholder="文章标题">
@@ -80,55 +79,50 @@
 正文内容
 
 - 列表项
-- 列表项
 
 **粗体** *斜体*
 
-\`\`\`javascript
-// 代码块
+```javascript
 console.log('Hello');
-\`\`\`
+```
 
 [链接文字](https://url)
 ![图片描述](https://image-url)
 "></textarea>
       </div>
-      
+
       <div class="editor-sidebar">
         <div>
           <label>链接别名（可选）</label>
-          <input type="text" id="post-slug" placeholder="留空则自动生成">
+          <input type="text" id="post-slug" placeholder="留空则自动生成" data-manual="false"
+            onfocus="this.dataset.manual='true'">
         </div>
-        
+
         <div>
           <label>摘要</label>
           <textarea id="post-summary" placeholder="文章摘要（可选）"></textarea>
         </div>
-        
+
         <div>
           <label>封面图片</label>
           <input type="text" id="post-cover" placeholder="图片 URL">
           <div id="cover-preview"></div>
-          <button class="btn-secondary" onclick="Admin.generateCover()" style="margin-top: 0.5rem; width: 100%;">
+          <button type="button" class="btn-secondary" onclick="Admin.generateCover()"
+            style="margin-top:0.5rem;width:100%;">
             🎨 AI 生成封面
           </button>
         </div>
-        
+
         <div>
           <label>
-            <input type="checkbox" id="post-published">
+            <input type="checkbox" id="post-published" checked>
             立即发布
           </label>
         </div>
       </div>
     </div>
   </div>
-  
+
   <script src="/app.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      Admin.checkAuth();
-    });
-  </script>
 </body>
 </html>

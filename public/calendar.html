@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日历 - 我的博客</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- 导航栏 -->
+  <nav id="navbar">
+    <div class="logo"><a href="/" style="text-decoration:none;color:inherit;">✨ 我的博客</a></div>
+    <div class="hamburger" id="hamburger" onclick="toggleMenu()">
+      <span></span><span></span><span></span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="/">首页</a></li>
+      <li><a href="/archive">归档</a></li>
+      <li><a href="/tags">标签</a></li>
+      <li><a href="/calendar" class="active">日历</a></li>
+      <li><a href="/about">关于</a></li>
+    </ul>
+    <div class="theme-toggle" id="themeToggle" title="切换主题">
+      <span class="icon sun">☀️</span>
+      <span class="icon moon">🌙</span>
+    </div>
+  </nav>
+
+  <!-- 主容器 -->
+  <main class="container">
+    <div class="calendar-header">
+      <button class="btn-secondary" id="prevMonth">← 上月</button>
+      <h1 id="calendarTitle" class="calendar-title"></h1>
+      <button class="btn-secondary" id="nextMonth">下月 →</button>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="calendar-stats" id="calendarStats"></div>
+
+    <!-- 日历网格 -->
+    <div class="calendar-grid" id="calendarGrid">
+      <div class="calendar-weekdays">
+        <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+      </div>
+      <div class="calendar-days" id="calendarDays"></div>
+    </div>
+
+    <!-- 当天文章列表 -->
+    <div class="calendar-articles" id="calendarArticles"></div>
+  </main>
+
+  <!-- 返回顶部 -->
+  <button class="back-to-top" id="backToTop" title="返回顶部">↑</button>
+
+  <script src="/app.js"></script>
+</body>
+</html>

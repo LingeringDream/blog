@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>关于我 - 我的博客</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/rss.xml">
+</head>
+<body>
+  <div class="progress-bar" id="progressBar" style="width:0%"></div>
+
+  <nav id="navbar">
+    <div class="logo"><a href="/" style="text-decoration:none;color:inherit;">✨ 我的博客</a></div>
+    <ul class="nav-links">
+      <li><a href="/">首页</a></li>
+      <li><a href="/archive">归档</a></li>
+      <li><a href="/tags">标签</a></li>
+      <li><a href="/calendar">日历</a></li>
+      <li><a href="/about" class="active">关于</a></li>
+    </ul>
+    <div class="hamburger" id="hamburger" onclick="toggleMenu()">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="theme-toggle" id="themeToggle" title="切换主题">
+      <span class="icon sun">☀️</span>
+      <span class="icon moon">🌙</span>
+    </div>
+  </nav>
+
+  <main class="container page-transition">
+    <div class="profile-page">
+
+      <!-- 头部卡片：封面 + 头像 + 基本信息 -->
+      <div class="profile-header-card">
+        <div class="profile-cover" id="profileCover"></div>
+        <div class="profile-main">
+          <div class="profile-avatar-wrapper">
+            <img id="profileAvatar" class="profile-avatar" src="" alt="头像">
+          </div>
+          <div class="profile-info">
+            <h1 id="profileName">博主</h1>
+            <p class="profile-title" id="profileTitle"></p>
+            <p class="profile-bio" id="profileBio"></p>
+            <div class="profile-social" id="profileSocial"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 统计条 -->
+      <div class="profile-stats" id="profileStats"></div>
+
+      <!-- 两栏布局：左侧主内容，右侧技能+社交 -->
+      <div class="profile-grid">
+        <div class="profile-main-col">
+
+          <!-- 关于我 -->
+          <div class="profile-section" id="aboutSection" style="display:none;">
+            <h2>📝 关于我</h2>
+            <div class="about-content" id="profileAbout"></div>
+          </div>
+
+          <!-- 项目展示 -->
+          <div class="profile-section" id="projectsSection" style="display:none;">
+            <h2>🚀 项目</h2>
+            <div class="projects-grid" id="profileProjects"></div>
+          </div>
+
+          <!-- 经历 -->
+          <div class="profile-section" id="experienceSection" style="display:none;">
+            <h2>💼 经历</h2>
+            <div class="experience-timeline" id="profileExperience"></div>
+          </div>
+
+          <!-- 最近文章 -->
+          <div class="profile-section">
+            <h2>📄 最近文章</h2>
+            <div class="recent-articles" id="recentArticles">
+              <div class="loader-pulse"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 侧边栏 -->
+        <div class="profile-side-col">
+          <!-- 技能/技术栈 -->
+          <div class="profile-section" id="skillsSection" style="display:none;">
+            <h2>🛠️ 技术栈</h2>
+            <div class="skill-tags" id="profileSkills"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <button class="back-to-top" id="backToTop" title="返回顶部">↑</button>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+  <script src="/app.js"></script>
+  <script>
+    const SOCIAL_ICONS = {
+      github: '🐙', twitter: '🐦', weibo: '📢', email: '📧',
+      wechat: '💬', qq: '🐧', bilibili: '📺', zhihu: '📘',
+      juejin: '💎', website: '🌐', linkedin: '💼', telegram: '✈️',
+      discord: '🎮', youtube: '🎬', rss: '📡',
+    };
+
+    async function loadProfile() {
+      try {
+        const [profile, statsData] = await Promise.all([
+          apiFetch('/profile'),
+          apiFetch('/profile/stats'),
+        ]);
+
+        // 封面
+        const cover = document.getElementById('profileCover');
+        if (profile.cover) cover.style.backgroundImage = `url(${profile.cover})`;
+
+        // 头像
+        document.getElementById('profileAvatar').src = profile.avatar || 'data:image/svg+xml,' + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect fill="%236366f1" width="120" height="120" rx="60"/><text x="60" y="70" text-anchor="middle" fill="white" font-size="48" font-family="sans-serif">👤</text></svg>'
+        );
+
+        // 基本信息
+        document.getElementById('profileName').textContent = profile.name || '博主';
+        document.title = `${profile.name || '关于我'} - 我的博客`;
+
+        const titleEl = document.getElementById('profileTitle');
+        if (profile.title) { titleEl.textContent = profile.title; titleEl.style.display = ''; }
+
+        const bioEl = document.getElementById('profileBio');
+        if (profile.bio) { bioEl.textContent = profile.bio; bioEl.style.display = ''; }
+
+        // 社交链接
+        const socialEl = document.getElementById('profileSocial');
+        if (profile.socialLinks && Object.keys(profile.socialLinks).length > 0) {
+          socialEl.innerHTML = Object.entries(profile.socialLinks)
+            .filter(([_, url]) => url)
+            .map(([platform, url]) => {
+              const icon = SOCIAL_ICONS[platform] || '🔗';
+              const href = platform === 'email' ? `mailto:${url}` : (url.startsWith('http') ? url : `https://${url}`);
+              return `<a href="${href}" target="_blank" rel="noopener" class="social-link" title="${platform}">${icon}</a>`;
+            }).join('');
+        }
+
+        // 统计
+        document.getElementById('profileStats').innerHTML = [
+          { n: statsData.articles || 0, l: '文章' },
+          { n: statsData.totalViews || 0, l: '总阅读' },
+          { n: statsData.tags || 0, l: '标签' },
+          { n: statsData.daysSinceFirst || 0, l: '天' },
+        ].map(s => `<div class="stat-item"><div class="stat-value">${s.n}</div><div class="stat-label">${s.l}</div></div>`).join('');
+
+        // 技能
+        if (profile.skills?.length > 0) {
+          document.getElementById('skillsSection').style.display = '';
+          document.getElementById('profileSkills').innerHTML = profile.skills
+            .map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('');
+        }
+
+        // 详细介绍
+        if (profile.about) {
+          document.getElementById('aboutSection').style.display = '';
+          document.getElementById('profileAbout').innerHTML = marked.parse(profile.about);
+        }
+
+        // 项目
+        if (profile.projects?.length > 0) {
+          document.getElementById('projectsSection').style.display = '';
+          document.getElementById('profileProjects').innerHTML = profile.projects.map(p => `
+            <a href="${escapeHtml(p.url || '#')}" target="_blank" rel="noopener" class="project-card">
+              <div class="project-card-header">
+                <span class="project-card-icon">📦</span>
+                <h3 class="project-card-name">${escapeHtml(p.name)}</h3>
+              </div>
+              ${p.description ? `<p class="project-card-desc">${escapeHtml(p.description)}</p>` : ''}
+              ${p.tech ? `<div class="project-card-tech">${p.tech.split(',').map(t => `<span>${escapeHtml(t.trim())}</span>`).join('')}</div>` : ''}
+              ${p.url ? `<span class="project-card-link">查看 →</span>` : ''}
+            </a>
+          `).join('');
+        }
+
+        // 经历
+        if (profile.experience?.length > 0) {
+          document.getElementById('experienceSection').style.display = '';
+          document.getElementById('profileExperience').innerHTML = profile.experience.map(e => `
+            <div class="timeline-item">
+              <div class="timeline-dot"></div>
+              <div class="timeline-content">
+                <div class="timeline-header">
+                  <span class="timeline-title">${escapeHtml(e.title)}</span>
+                  ${e.period ? `<span class="timeline-period">${escapeHtml(e.period)}</span>` : ''}
+                </div>
+                ${e.company ? `<div class="timeline-company">${escapeHtml(e.company)}</div>` : ''}
+                ${e.description ? `<div class="timeline-desc">${escapeHtml(e.description)}</div>` : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+
+        loadRecentArticles();
+      } catch (err) {
+        console.error('Load profile error:', err);
+      }
+    }
+
+    async function loadRecentArticles() {
+      const container = document.getElementById('recentArticles');
+      try {
+        const data = await apiFetch('/articles?limit=5');
+        container.innerHTML = data.articles.map(a => `
+          <a href="/post/${encodeURIComponent(a.slug)}" class="recent-article-item">
+            <div class="recent-article-info">
+              <h3>${escapeHtml(a.title)}</h3>
+              <span class="recent-article-meta">${formatDate(a.createdAt)} · ${a.views || 0} 阅读</span>
+            </div>
+            <span class="recent-article-arrow">→</span>
+          </a>
+        `).join('') || '<p class="empty-state">暂无文章</p>';
+      } catch (err) {
+        container.innerHTML = '<p class="empty-state">加载失败</p>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      ThemeManager.init();
+      ThemeManager.bindButton('themeToggle');
+      BackToTop.init('backToTop');
+      Navbar.init('navbar');
+      loadProfile();
+    });
+  </script>
+
+  <style>
+    .profile-page { max-width: 960px; margin: 0 auto; }
+
+    /* ===== 头部卡片 ===== */
+    .profile-header-card {
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .profile-cover {
+      height: 220px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary), var(--accent));
+      background-size: 200% 200%;
+      animation: gradient 6s ease infinite;
+    }
+    .profile-cover[style*="url"] { animation: none; background-size: cover; background-position: center; }
+    .profile-main {
+      padding: 0 2rem 2rem;
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-end;
+      margin-top: -50px;
+      position: relative;
+    }
+    .profile-avatar-wrapper { flex-shrink: 0; }
+    .profile-avatar {
+      width: 120px; height: 120px;
+      border-radius: 50%;
+      border: 4px solid var(--bg);
+      box-shadow: 0 4px 20px var(--shadow);
+      object-fit: cover;
+      background: var(--bg-secondary);
+    }
+    .profile-info { flex: 1; padding-bottom: 0.5rem; }
+    .profile-info h1 {
+      font-size: 1.8rem; margin-bottom: 0.25rem;
+      background: linear-gradient(135deg, var(--text), var(--primary));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .profile-title { color: var(--text-secondary); font-size: 1rem; margin-bottom: 0.5rem; }
+    .profile-bio { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.6; margin-bottom: 0.75rem; }
+    .profile-social { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .social-link {
+      display: flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--bg); border: 1px solid var(--border);
+      text-decoration: none; font-size: 1.15rem;
+      transition: all var(--duration-fast);
+    }
+    .social-link:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: 0 4px 12px var(--shadow); }
+
+    /* ===== 统计条 ===== */
+    .profile-stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .stat-item {
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem; text-align: center;
+      transition: all var(--duration-fast);
+    }
+    .stat-item:hover { border-color: var(--primary); transform: translateY(-2px); }
+    .stat-value {
+      font-size: 1.8rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .stat-label { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem; }
+
+    /* ===== 两栏布局 ===== */
+    .profile-grid {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    .profile-main-col { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+    .profile-side-col { display: flex; flex-direction: column; gap: 1.5rem; position: sticky; top: 80px; }
+
+    .profile-section {
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+    }
+    .profile-section h2 {
+      font-size: 1.2rem; margin-bottom: 1rem;
+      padding-bottom: 0.5rem; border-bottom: 2px solid var(--border);
+    }
+
+    /* ===== 关于我 ===== */
+    .about-content { line-height: 1.9; font-size: 1.05rem; }
+    .about-content p { margin-bottom: 1rem; }
+    .about-content h2 { font-size: 1.3rem; margin: 1.5rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+    .about-content h3 { font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
+    .about-content code { background: var(--bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+    .about-content pre { background: var(--bg); padding: 1.25rem; border-radius: var(--radius); overflow-x: auto; margin: 1rem 0; border: 1px solid var(--border); }
+    .about-content pre code { background: none; padding: 0; }
+    .about-content a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+
+    /* ===== 项目卡片网格 ===== */
+    .projects-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem;
+    }
+    .project-card {
+      display: flex; flex-direction: column;
+      padding: 1.25rem; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 12px;
+      text-decoration: none; color: var(--text);
+      transition: all var(--duration-fast);
+    }
+    .project-card:hover { border-color: var(--primary); transform: translateY(-4px); box-shadow: 0 8px 24px var(--shadow); }
+    .project-card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .project-card-icon { font-size: 1.3rem; }
+    .project-card-name { font-size: 1.05rem; font-weight: 700; }
+    .project-card-desc { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.75rem; flex: 1; }
+    .project-card-tech { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem; }
+    .project-card-tech span {
+      font-size: 0.7rem; padding: 0.2rem 0.55rem; border-radius: 10px;
+      background: var(--primary-light); color: var(--primary); font-weight: 600;
+    }
+    .project-card-link { font-size: 0.8rem; color: var(--primary); font-weight: 600; }
+
+    /* ===== 经历时间线 ===== */
+    .experience-timeline { position: relative; padding-left: 1.5rem; }
+    .experience-timeline::before {
+      content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px;
+      width: 2px; background: linear-gradient(180deg, var(--primary), var(--border));
+    }
+    .timeline-item { position: relative; padding-bottom: 1.5rem; }
+    .timeline-item:last-child { padding-bottom: 0; }
+    .timeline-dot {
+      position: absolute; left: -1.5rem; top: 6px;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--primary); border: 3px solid var(--bg-secondary);
+      box-shadow: 0 0 0 2px var(--primary-light);
+    }
+    .timeline-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
+    .timeline-title { font-weight: 700; font-size: 1rem; }
+    .timeline-period { font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; }
+    .timeline-company { font-size: 0.9rem; color: var(--primary); font-weight: 500; margin-top: 0.15rem; }
+    .timeline-desc { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; margin-top: 0.35rem; }
+
+    /* ===== 技能标签 ===== */
+    .skill-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .skill-tag {
+      background: linear-gradient(135deg, var(--primary-light), var(--primary));
+      color: white; padding: 0.4rem 1rem; border-radius: 20px;
+      font-size: 0.85rem; font-weight: 500; transition: all var(--duration-fast);
+    }
+    .skill-tag:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
+
+    /* ===== 最近文章 ===== */
+    .recent-article-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); text-decoration: none; color: var(--text);
+      transition: all var(--duration-fast); margin-bottom: 0.75rem;
+    }
+    .recent-article-item:last-child { margin-bottom: 0; }
+    .recent-article-item:hover { border-color: var(--primary); transform: translateX(4px); box-shadow: 0 4px 12px var(--shadow); }
+    .recent-article-info h3 { font-size: 1rem; margin-bottom: 0.25rem; font-weight: 600; }
+    .recent-article-meta { font-size: 0.8rem; color: var(--text-secondary); }
+    .recent-article-arrow { color: var(--primary); font-size: 1.2rem; flex-shrink: 0; margin-left: 1rem; }
+
+    /* ===== 响应式 ===== */
+    @media (max-width: 768px) {
+      .profile-main { flex-direction: column; align-items: center; text-align: center; padding: 0 1.5rem 1.5rem; }
+      .profile-avatar { width: 100px; height: 100px; }
+      .profile-info h1 { font-size: 1.5rem; }
+      .profile-social { justify-content: center; }
+      .profile-stats { grid-template-columns: repeat(2, 1fr); }
+      .profile-grid { grid-template-columns: 1fr; }
+      .profile-side-col { position: static; }
+      .projects-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</body>
+</html>

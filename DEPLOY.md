@@ -3,13 +3,21 @@
 ## 目录
 
 - [环境要求](#环境要求)
-- [快速开始（开发/测试）](#快速开始开发测试)
-- [生产部署](#生产部署)
+- [快速开始（开发测试）](#快速开始开发测试)
+- [方案一：自建服务器部署](#方案一自建服务器部署)
   - [第一步：准备服务器](#第一步准备服务器)
   - [第二步：配置环境变量](#第二步配置环境变量)
   - [第三步：启动服务（HTTP）](#第三步启动服务http)
   - [第四步：申请 SSL 证书](#第四步申请-ssl-证书)
   - [第五步：启用 HTTPS](#第五步启用-https)
+- [方案二：ClawCloud Run 云平台部署](#方案二clawcloud-run-云平台部署)
+  - [前期准备：推送镜像到 Docker Hub](#前期准备推送镜像到-docker-hub)
+  - [第一步：创建应用](#第一步创建应用)
+  - [第二步：配置容器与网络](#第二步配置容器与网络)
+  - [第三步：配置环境变量与持久化存储](#第三步配置环境变量与持久化存储)
+  - [第四步：部署并验证](#第四步部署并验证)
+  - [第五步：绑定自定义域名（可选）](#第五步绑定自定义域名可选)
+  - [更新与运维](#更新与运维)
 - [域名与 DNS 配置](#域名与-dns-配置)
 - [数据备份与恢复](#数据备份与恢复)
 - [日常运维](#日常运维)
@@ -34,7 +42,7 @@ docker compose version
 
 ---
 
-## 快速开始（开发/测试）
+## 快速开始（开发测试）
 
 适合本地试用或局域网内部访问，不需要域名和 SSL。
 
@@ -67,7 +75,7 @@ docker compose up -d --build   # 重新构建并启动（代码更新后）
 
 ---
 
-## 生产部署
+## 方案一：自建服务器部署
 
 适合公网部署，包含 Nginx 反向代理 + Let's Encrypt 免费 SSL 证书。
 
@@ -99,7 +107,7 @@ sudo ufw allow 443/tcp
 sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
 
-# 阿里云/腾讯云：在安全组中放行 80 和 443 端口
+# 阿里云 / 腾讯云：在安全组中放行 80 和 443 端口
 ```
 
 4. **上传项目文件**
@@ -179,7 +187,7 @@ ls nginx/certbot/conf/live/blog.example.com/
 ### 第五步：启用 HTTPS
 
 ```bash
-# 用 SSL 配置替换 HTTP 配置
+# 将 SSL 配置替换 HTTP 配置
 # 先修改域名
 sed 's/YOUR_DOMAIN/blog.example.com/g' \
   nginx/conf.d/blog-ssl.conf.example > nginx/conf.d/blog.conf
@@ -194,6 +202,162 @@ curl -I https://blog.example.com
 访问 `https://你的域名` 确认证书生效。
 
 证书会自动续期（certbot 容器每 12 小时检查一次）。
+
+---
+
+## 方案二：ClawCloud Run 云平台部署
+
+[ClawCloud Run](https://run.claw.cloud/) 是一个容器云平台，无需自建服务器，通过网页界面即可部署 Docker 应用。自带 HTTPS、公网域名、持久化存储，适合不想折腾服务器的用户。
+
+> 💰 新用户通常有免费额度，详见 [run.claw.cloud](https://run.claw.cloud/) 官网定价。
+
+### 前期准备：推送镜像到 Docker Hub
+
+ClawCloud Run 支持从公有/私有镜像仓库拉取镜像部署。你需要先把博客镜像推送到 Docker Hub（或其他镜像仓库）。
+
+```bash
+# 1. 注册 Docker Hub 账号：https://hub.docker.com
+# 2. 登录
+docker login
+
+# 3. 构建镜像（在项目目录下）
+docker build -t mengqianzai/blog:latest .
+
+# 4. 推送到 Docker Hub
+docker push mengqianzai/blog:latest
+```
+
+> 如果你使用 GitHub，也可以配置 GitHub Actions 自动构建推送。在项目根目录创建 `.github/workflows/docker.yml` 即可（见本节末尾）。
+
+### 第一步：创建应用
+
+1. 访问 [run.claw.cloud](https://run.claw.cloud/)，注册并登录
+2. 在控制台点击 **「App Launchpad」**
+3. 点击 **「Create App」** 进入应用配置页面
+4. 填写 **应用名称**，例如 `my-blog`
+
+### 第二步：配置容器与网络
+
+| 配置项 | 填写内容 | 说明 |
+|--------|---------|------|
+| Image Type | Public | 如果镜像是公开的选 Public；私有选 Private 并填写仓库凭据 |
+| Image Name | `mengqianzai/blog:latest` | 你在 Docker Hub 上的镜像名 |
+| Usage Type | Fixed | 固定实例模式（博客流量不大，不需要弹性伸缩） |
+| Replicas | 1 | 单实例即可 |
+| CPU | 0.5 Core | 够用了 |
+| Memory | 512 MB | 够用了 |
+| Container Port | `3000` | 必须是 3000，这是 Express 监听的端口 |
+| Public Access | 开启 | 开启后平台自动分配公网域名和 HTTPS |
+
+### 第三步：配置环境变量与持久化存储
+
+在 **「Advanced Configuration」**（高级配置）中：
+
+**环境变量**（一行一个，格式 `KEY=VALUE`）：
+
+```
+NODE_ENV=production
+BLOG_API_KEY=your-strong-random-secret-here
+DB_PATH=/app/data/blog.db
+```
+
+> ⚠️ `BLOG_API_KEY` 请使用强随机字符串（如 `openssl rand -base64 32` 生成），这是管理后台的登录密钥。
+
+**持久化存储**（Local Storage）：
+
+| 配置项 | 填写内容 |
+|--------|---------|
+| Container Path | `/app/data` |
+| Storage Size | 1 GB（或根据需要调整） |
+
+> 💡 持久化存储确保 SQLite 数据库在容器重启/重建后不丢失。如果不挂载，重新部署后所有文章数据会丢失。
+
+### 第四步：部署并验证
+
+1. 确认所有配置无误，点击 **「Deploy Application」**
+2. 等待部署完成（通常 1-3 分钟）
+3. 部署成功后，在应用详情页可以看到自动生成的公网地址，格式类似：
+   ```
+   https://my-blog-xxxxx.run.claw.cloud
+   ```
+4. 访问该地址，确认博客首页正常显示
+5. 访问 `https://my-blog-xxxxx.run.claw.cloud/admin`，用你设置的 `BLOG_API_KEY` 登录管理后台
+
+### 第五步：绑定自定义域名（可选）
+
+如果你想用自己的域名（如 `blog.example.com`）：
+
+1. 在 ClawCloud Run 应用详情页，点击右侧 **「Custom Domain」**
+2. 输入你的域名，平台会显示一个 CNAME 目标地址
+3. 去你的 DNS 管理后台（如 Cloudflare、阿里云万网），添加 CNAME 记录：
+
+| 类型 | 主机记录 | 记录值 |
+|------|---------|--------|
+| CNAME | blog | `my-blog-xxxxx.run.claw.cloud` |
+
+4. 等待 DNS 生效（通常 5 分钟 ~ 2 小时）
+5. 回到 ClawCloud Run，点击 **「Deploy」** 确认绑定
+6. 平台自动为你的域名配置 HTTPS 证书
+
+> 💡 如果使用 Cloudflare，建议先关闭橙色云朵（DNS Only 模式），等绑定成功后再开启代理。
+
+### 更新与运维
+
+#### 更新博客代码
+
+```bash
+# 1. 本地重新构建并推送镜像
+docker build -t mengqianzai/blog:latest .
+docker push mengqianzai/blog:latest
+
+# 2. 在 ClawCloud Run 控制台：
+#    进入应用详情 → 点击「Update」→ 不改配置直接点「Deploy」
+#    平台会拉取最新镜像并重新部署
+```
+
+#### 查看日志
+
+在 ClawCloud Run 应用详情页，点击 **「Logs」** 标签查看实时日志。
+
+#### 监控
+
+应用详情页提供 CPU、内存、网络等实时监控图表。
+
+#### 调整资源
+
+点击 **「Update」** 可以随时调整 CPU / 内存 / 副本数，无需重新构建镜像。
+
+### GitHub Actions 自动构建推送（可选）
+
+在项目根目录创建 `.github/workflows/docker.yml`，每次 push 代码自动构建推送镜像：
+
+```yaml
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/blog:latest
+```
+
+> 需要在 GitHub 仓库的 Settings → Secrets 中配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`。
 
 ---
 
@@ -412,7 +576,7 @@ docker compose -f docker-compose.prod.yml logs blog
 ```
 blog/
 ├── Dockerfile                  # 应用镜像构建
-├── docker-compose.yml          # 快速启动（开发/测试）
+├── docker-compose.yml          # 快速启动（开发测试）
 ├── docker-compose.prod.yml     # 生产部署（含 nginx + SSL）
 ├── .env                        # 环境变量（需创建）
 ├── .env.example                # 环境变量示例
@@ -432,21 +596,21 @@ blog/
 ## 架构图
 
 ```
-                    ┌─────────────────────────────────┐
-                    │           Docker Host            │
-                    │                                  │
-  用户 ──HTTPS──▶  │  ┌─────────┐    ┌─────────────┐ │
-                    │  │  Nginx  │───▶│  Blog App   │ │
-                    │  │ :80/443 │    │   :3000     │ │
-                    │  └─────────┘    └──────┬──────┘ │
-                    │                        │        │
-                    │                  ┌─────▼─────┐  │
-                    │                  │  SQLite DB │  │
-                    │                  │  (Volume)  │  │
-                    │                  └───────────┘  │
-                    └─────────────────────────────────┘
+                    ┌───────────────────────────────────┐
+                    │          Docker Host              │
+                    │                                   │
+  用户 ──HTTPS──▶   │   ┌───────────┐   ┌──────────────┐│
+                    │   │  Nginx    │───│  Blog App    ││
+                    │   │  :80/443  │   │  :3000       ││
+                    │   └───────────┘   └──────┬───────┘│
+                    │                          │        │
+                    │                    ┌─────▼─────┐  │
+                    │                    │ SQLite DB  │  │
+                    │                    │ (Volume)   │  │
+                    │                    └───────────┘  │
+                    └───────────────────────────────────┘
 ```
 
 - **Nginx**：处理 SSL 终止、静态资源缓存、反向代理
 - **Blog App**：Express 应用，处理业务逻辑
-- **SQLite DB**：持久化存储在 Docker Volume 中
+- **SQLite DB**：持久化存储（Docker Volume）

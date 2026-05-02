@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>标签 - 我的博客</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="progress-bar" id="progressBar" style="width:0%"></div>
+
+  <nav id="navbar">
+    <div class="logo"><a href="/" style="text-decoration:none;color:inherit;">✨ 我的博客</a></div>
+    <div class="hamburger" id="hamburger" onclick="toggleMenu()">
+      <span></span><span></span><span></span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="/">首页</a></li>
+      <li><a href="/archive">归档</a></li>
+      <li><a href="/tags" class="active">标签</a></li>
+      <li><a href="/calendar">日历</a></li>
+      <li><a href="/about">关于</a></li>
+    </ul>
+    <div class="theme-toggle" id="themeToggle" title="切换主题">
+      <span class="icon sun">☀️</span>
+      <span class="icon moon">🌙</span>
+    </div>
+  </nav>
+
+  <main class="container page-transition">
+    <h1 class="tags-page-title">🏷️ 标签</h1>
+
+    <!-- 标签云 -->
+    <div class="tag-cloud" id="tagCloud">
+      <div class="loader-pulse"><span></span><span></span><span></span></div>
+    </div>
+
+    <!-- 筛选后的文章列表 -->
+    <div class="tag-articles" id="tagArticles" style="display:none;">
+      <div class="tag-articles-header">
+        <h2 id="tagArticlesTitle"></h2>
+        <button class="btn-secondary" onclick="clearTagFilter()">✕ 清除筛选</button>
+      </div>
+      <div class="articles-grid" id="filteredArticles"></div>
+    </div>
+  </main>
+
+  <button class="back-to-top" id="backToTop" title="返回顶部">↑</button>
+
+  <script src="/app.js"></script>
+  <script>
+    let allTags = [];
+
+    async function loadTags() {
+      const cloud = document.getElementById('tagCloud');
+      try {
+        allTags = await apiFetch('/tags');
+        const maxCount = Math.max(...allTags.map(t => t.count), 1);
+
+        cloud.innerHTML = allTags.map(t => {
+          const size = 0.8 + (t.count / maxCount) * 1.2;
+          return `<a class="tag-cloud-item" href="#" data-tag="${escapeHtml(t.name)}"
+            style="font-size:${size}rem" onclick="filterByTag(event, '${escapeHtml(t.name)}')">
+            ${escapeHtml(t.name)} <sup>${t.count}</sup>
+          </a>`;
+        }).join('') || '<p class="empty-state">暂无标签</p>';
+
+        // 检查 URL 是否有标签参数
+        const pathTag = decodeURIComponent(window.location.pathname.replace('/tag/', ''));
+        if (pathTag && pathTag !== '/tags') {
+          filterByTag(null, pathTag);
+        }
+      } catch (err) {
+        cloud.innerHTML = '<p class="empty-state">加载失败</p>';
+      }
+    }
+
+    async function filterByTag(event, tag) {
+      if (event) event.preventDefault();
+      const container = document.getElementById('tagArticles');
+      const grid = document.getElementById('filteredArticles');
+      const title = document.getElementById('tagArticlesTitle');
+      const cloud = document.getElementById('tagCloud');
+
+      title.textContent = `标签：${tag}`;
+      container.style.display = '';
+      cloud.style.display = 'none';
+
+      try {
+        const articles = await apiFetch(`/tags/${encodeURIComponent(tag)}`);
+        grid.innerHTML = articles.map((a, i) => `
+          <article style="animation-delay:${i * 0.1}s" onclick="window.location.href='/post/${encodeURIComponent(a.slug)}'">
+            <h2>${escapeHtml(a.title)}</h2>
+            <p class="summary">${escapeHtml(a.summary || a.content.substring(0, 150) + '...')}</p>
+            <div class="meta">
+              <span>📅 ${formatDate(a.createdAt)}</span>
+              <span>👁️ ${a.views || 0} 阅读</span>
+            </div>
+          </article>
+        `).join('') || '<div class="empty-state"><p>该标签下暂无文章</p></div>';
+      } catch (err) {
+        grid.innerHTML = '<div class="empty-state"><p>加载失败</p></div>';
+      }
+    }
+
+    function clearTagFilter() {
+      document.getElementById('tagArticles').style.display = 'none';
+      document.getElementById('tagCloud').style.display = '';
+      history.replaceState(null, '', '/tags');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      ThemeManager.init();
+      ThemeManager.bindButton('themeToggle');
+      BackToTop.init('backToTop');
+      Navbar.init('navbar');
+      loadTags();
+    });
+  </script>
+
+  <style>
+    .tags-page-title {
+      font-size: 2rem;
+      margin-bottom: 2rem;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .tag-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      padding: 2rem;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+    .tag-cloud-item {
+      color: var(--primary);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      transition: all var(--duration-fast);
+      white-space: nowrap;
+    }
+    .tag-cloud-item:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      transform: scale(1.1);
+    }
+    .tag-cloud-item sup {
+      color: var(--text-secondary);
+      font-size: 0.7em;
+      margin-left: 2px;
+    }
+    .tag-cloud-item:hover sup {
+      color: rgba(255,255,255,0.7);
+    }
+    .tag-articles-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    .tag-articles-header h2 {
+      font-size: 1.5rem;
+      color: var(--primary);
+    }
+  </style>
+</body>
+</html>

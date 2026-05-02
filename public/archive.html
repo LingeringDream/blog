@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>归档 - 我的博客</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="progress-bar" id="progressBar" style="width:0%"></div>
+
+  <nav id="navbar">
+    <div class="logo"><a href="/" style="text-decoration:none;color:inherit;">✨ 我的博客</a></div>
+    <div class="hamburger" id="hamburger" onclick="toggleMenu()">
+      <span></span><span></span><span></span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="/">首页</a></li>
+      <li><a href="/archive" class="active">归档</a></li>
+      <li><a href="/tags">标签</a></li>
+      <li><a href="/calendar">日历</a></li>
+      <li><a href="/about">关于</a></li>
+    </ul>
+    <div class="theme-toggle" id="themeToggle" title="切换主题">
+      <span class="icon sun">☀️</span>
+      <span class="icon moon">🌙</span>
+    </div>
+  </nav>
+
+  <main class="container page-transition">
+    <h1 class="archive-title">📚 文章归档</h1>
+    <div class="archive-stats" id="archiveStats"></div>
+    <div class="archive-list" id="archiveList">
+      <div class="loader-pulse"><span></span><span></span><span></span></div>
+    </div>
+  </main>
+
+  <button class="back-to-top" id="backToTop" title="返回顶部">↑</button>
+
+  <script src="/app.js"></script>
+  <script>
+    async function loadArchive() {
+      const container = document.getElementById('archiveList');
+      const stats = document.getElementById('archiveStats');
+      try {
+        const data = await apiFetch('/archive');
+        const total = data.reduce((sum, g) => sum + g.articles.length, 0);
+        stats.innerHTML = `共 <strong>${total}</strong> 篇文章，<strong>${data.length}</strong> 个月`;
+
+        container.innerHTML = data.map(group => `
+          <div class="archive-group">
+            <h2 class="archive-month">${group.year} 年 ${group.month} 月</h2>
+            <div class="archive-articles">
+              ${group.articles.map(a => `
+                <a href="/post/${encodeURIComponent(a.slug)}" class="archive-item">
+                  <span class="archive-date">${new Date(a.createdAt).getDate()} 日</span>
+                  <span class="archive-article-title">${escapeHtml(a.title)}</span>
+                  <span class="archive-views">👁️ ${a.views}</span>
+                </a>
+              `).join('')}
+            </div>
+          </div>
+        `).join('') || '<div class="empty-state"><p>暂无文章</p></div>';
+      } catch (err) {
+        container.innerHTML = '<div class="empty-state"><p>加载失败</p></div>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      ThemeManager.init();
+      ThemeManager.bindButton('themeToggle');
+      BackToTop.init('backToTop');
+      Navbar.init('navbar');
+      loadArchive();
+    });
+  </script>
+
+  <style>
+    .archive-title {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .archive-stats {
+      color: var(--text-secondary);
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+    .archive-group {
+      margin-bottom: 2rem;
+    }
+    .archive-month {
+      font-size: 1.25rem;
+      color: var(--primary);
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--border);
+    }
+    .archive-articles {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .archive-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      text-decoration: none;
+      color: var(--text);
+      transition: all var(--duration-fast);
+      border: 1px solid var(--border);
+    }
+    .archive-item:hover {
+      border-color: var(--primary);
+      transform: translateX(4px);
+      box-shadow: 0 4px 12px var(--shadow);
+    }
+    .archive-date {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      min-width: 40px;
+    }
+    .archive-article-title {
+      flex: 1;
+      font-weight: 500;
+    }
+    .archive-views {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+    @media (max-width: 768px) {
+      .archive-item { flex-wrap: wrap; gap: 0.5rem; }
+      .archive-views { width: 100%; text-align: right; }
+    }
+  </style>
+</body>
+</html>

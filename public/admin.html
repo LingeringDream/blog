@@ -34,13 +34,18 @@
       <!-- 标签页 -->
       <div class="tabs">
         <button class="tab active" onclick="Admin.showTab('posts')">文章管理</button>
+        <button class="tab" onclick="Admin.showTab('profile')">个人信息</button>
         <button class="tab" onclick="Admin.showTab('settings')">网站设置</button>
       </div>
 
       <!-- 文章管理 -->
       <div id="tab-posts" class="tab-content">
-        <div style="margin-bottom:1.5rem;">
+        <div style="margin-bottom:1.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
           <button class="btn-primary" onclick="Admin.showEditor()">+ 新建文章</button>
+          <div class="export-buttons" style="display:flex;gap:0.5rem;">
+            <button class="btn-secondary" onclick="Admin.exportArticles('json')">📥 导出 JSON</button>
+            <button class="btn-secondary" onclick="Admin.exportArticles('markdown')">📥 导出 Markdown</button>
+          </div>
         </div>
         <div class="admin-posts" id="admin-posts"></div>
       </div>
@@ -55,6 +60,88 @@
           <button type="submit" class="btn-primary">保存设置</button>
         </form>
       </div>
+
+      <!-- 个人信息 -->
+      <div id="tab-profile" class="tab-content hidden">
+        <form class="settings-form" onsubmit="event.preventDefault(); Admin.saveProfile();">
+          <label>昵称</label>
+          <input type="text" id="profile-name" placeholder="你的名字">
+
+          <label>头衔/签名</label>
+          <input type="text" id="profile-title" placeholder="如：全栈开发者 / 爱折腾的程序员">
+
+          <label>个人简介</label>
+          <textarea id="profile-bio" placeholder="一句话介绍自己..."></textarea>
+
+          <label>头像 URL</label>
+          <input type="text" id="profile-avatar" placeholder="https://...">
+          <div id="profile-avatar-preview" style="margin-top:0.5rem;"></div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+            <label class="btn-secondary" style="flex:1;text-align:center;cursor:pointer;margin:0;">
+              📁 上传头像
+              <input type="file" accept="image/*" style="display:none;" onchange="Admin.uploadProfileImage(this, 'profile-avatar', 'profile-avatar-preview')">
+            </label>
+          </div>
+
+          <label>封面图片 URL</label>
+          <input type="text" id="profile-cover" placeholder="https://...">
+          <div id="profile-cover-preview" style="margin-top:0.5rem;"></div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+            <label class="btn-secondary" style="flex:1;text-align:center;cursor:pointer;margin:0;">
+              📁 上传封面
+              <input type="file" accept="image/*" style="display:none;" onchange="Admin.uploadProfileImage(this, 'profile-cover', 'profile-cover-preview')">
+            </label>
+          </div>
+
+          <label>技能/技术栈（逗号分隔）</label>
+          <input type="text" id="profile-skills" placeholder="如：JavaScript, Vue, Node.js, Docker">
+
+          <label>详细介绍（支持 Markdown）</label>
+          <textarea id="profile-about" rows="8" placeholder="## 关于我&#10;&#10;在这里详细介绍你自己..."></textarea>
+
+          <h3 style="margin-top:1.5rem;margin-bottom:0.75rem;">社交链接</h3>
+
+          <label>GitHub</label>
+          <input type="text" id="profile-social-github" placeholder="https://github.com/username">
+
+          <label>Twitter</label>
+          <input type="text" id="profile-social-twitter" placeholder="https://twitter.com/username">
+
+          <label>邮箱</label>
+          <input type="text" id="profile-social-email" placeholder="your@email.com">
+
+          <label>微信</label>
+          <input type="text" id="profile-social-wechat" placeholder="微信号或二维码链接">
+
+          <label>Bilibili</label>
+          <input type="text" id="profile-social-bilibili" placeholder="https://space.bilibili.com/xxx">
+
+          <label>知乎</label>
+          <input type="text" id="profile-social-zhihu" placeholder="https://www.zhihu.com/people/xxx">
+
+          <label>掘金</label>
+          <input type="text" id="profile-social-juejin" placeholder="https://juejin.cn/user/xxx">
+
+          <label>个人网站</label>
+          <input type="text" id="profile-social-website" placeholder="https://yoursite.com">
+
+          <label>Telegram</label>
+          <input type="text" id="profile-social-telegram" placeholder="https://t.me/username">
+
+          <label>RSS</label>
+          <input type="text" id="profile-social-rss" placeholder="https://yourblog.com/rss.xml">
+
+          <h3 style="margin-top:2rem;margin-bottom:0.75rem;">🚀 项目展示</h3>
+          <div id="projects-list"></div>
+          <button type="button" class="btn-secondary" onclick="Admin.addProjectEntry()" style="margin-top:0.5rem;">+ 添加项目</button>
+
+          <h3 style="margin-top:2rem;margin-bottom:0.75rem;">💼 个人经历</h3>
+          <div id="experience-list"></div>
+          <button type="button" class="btn-secondary" onclick="Admin.addExperienceEntry()" style="margin-top:0.5rem;">+ 添加经历</button>
+
+          <button type="submit" class="btn-primary" style="margin-top:2rem;">保存个人信息</button>
+        </form>
+      </div>
     </main>
   </div>
 
@@ -63,6 +150,9 @@
     <div class="editor-header">
       <h2 id="editor-title">新建文章</h2>
       <div class="editor-actions">
+        <span id="autosave-indicator" class="autosave-indicator"></span>
+        <button class="btn-secondary" onclick="Admin.toggleDistractionFree()" title="专注模式">🎯</button>
+        <button class="btn-secondary" onclick="Admin.showVersionHistory()" title="版本历史">📋 版本</button>
         <button class="btn-secondary" onclick="Admin.hideEditor()">取消</button>
         <button class="btn-primary" onclick="Admin.savePost()">保存</button>
       </div>
@@ -91,7 +181,7 @@ console.log('Hello');
 "></textarea>
       </div>
 
-      <div class="editor-sidebar">
+      <div class="editor-sidebar" id="editor-sidebar">
         <div>
           <label>链接别名（可选）</label>
           <input type="text" id="post-slug" placeholder="留空则自动生成" data-manual="false"
@@ -105,12 +195,44 @@ console.log('Hello');
 
         <div>
           <label>封面图片</label>
-          <input type="text" id="post-cover" placeholder="图片 URL">
+          <input type="text" id="post-cover" placeholder="图片 URL 或上传图片">
           <div id="cover-preview"></div>
-          <button type="button" class="btn-secondary" onclick="Admin.generateCover()"
-            style="margin-top:0.5rem;width:100%;">
-            🎨 AI 生成封面
-          </button>
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+            <label class="btn-secondary" style="flex:1;text-align:center;cursor:pointer;margin:0;">
+              📁 上传本地图片
+              <input type="file" id="cover-file-input" accept="image/*" style="display:none;"
+                onchange="Admin.uploadCover(this)">
+            </label>
+            <button type="button" class="btn-secondary" onclick="Admin.generateCover()" style="flex:1;">
+              🎨 AI 生成封面
+            </button>
+          </div>
+          <div id="ai-prompt-section" style="display:none;margin-top:0.5rem;">
+            <input type="text" id="ai-prompt-input" placeholder="描述你想要的封面图...">
+            <button type="button" class="btn-primary" onclick="Admin.doGenerateCover()" style="margin-top:0.3rem;width:100%;">
+              生成
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label>可见性</label>
+          <div class="visibility-options">
+            <label class="radio-label">
+              <input type="radio" name="post-visibility" value="private"> 🔒 私密
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="post-visibility" value="unlisted"> 🔗 不公开
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="post-visibility" value="public" checked> 🌐 公开
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label>密码保护（可选）</label>
+          <input type="text" id="post-password" placeholder="设置密码保护文章">
         </div>
 
         <div>
@@ -119,6 +241,32 @@ console.log('Hello');
             立即发布
           </label>
         </div>
+
+        <div>
+          <label>
+            <input type="checkbox" id="post-pinned">
+            📌 置顶文章
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 版本历史面板 -->
+    <div id="version-history-panel" class="version-history-panel hidden">
+      <div class="version-history-header">
+        <h3>📋 版本历史</h3>
+        <button class="btn-secondary" onclick="Admin.hideVersionHistory()">✕</button>
+      </div>
+      <div id="version-list" class="version-list"></div>
+      <div id="version-preview" class="version-preview hidden">
+        <div class="version-preview-header">
+          <h4 id="version-preview-title"></h4>
+          <div>
+            <button class="btn-primary" onclick="Admin.restoreVersion()">恢复此版本</button>
+            <button class="btn-secondary" onclick="Admin.closeVersionPreview()">关闭</button>
+          </div>
+        </div>
+        <div id="version-preview-content" class="version-preview-content"></div>
       </div>
     </div>
   </div>

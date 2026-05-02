@@ -15,6 +15,7 @@ services:
       - DB_PATH=/app/data/blog.db
     volumes:
       - blog-data:/app/data
+      - blog-uploads:/app/public/uploads
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/articles?limit=1"]
@@ -25,3 +26,4 @@ services:
 
 volumes:
   blog-data:
+  blog-uploads:

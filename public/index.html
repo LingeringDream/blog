@@ -6,6 +6,20 @@
   <title>我的博客</title>
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/rss.xml">
+  <meta name="description" content="我的博客 - 分享技术与生活">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="我的博客">
+  <meta property="og:description" content="我的博客 - 分享技术与生活">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    "name": "我的博客",
+    "description": "分享技术与生活",
+    "url": "/"
+  }
+  </script>
 </head>
 <body>
   <!-- 阅读进度条 -->
@@ -14,9 +28,15 @@
   <!-- 导航栏 -->
   <nav id="navbar">
     <div class="logo">✨ 我的博客</div>
+    <div class="hamburger" id="hamburger" onclick="toggleMenu()">
+      <span></span><span></span><span></span>
+    </div>
     <ul class="nav-links">
       <li><a href="/" class="active">首页</a></li>
-      <li><a href="/admin">管理</a></li>
+      <li><a href="/archive">归档</a></li>
+      <li><a href="/tags">标签</a></li>
+      <li><a href="/calendar">日历</a></li>
+      <li><a href="/about">关于</a></li>
     </ul>
     <div class="theme-toggle" id="themeToggle" title="切换主题">
       <span class="icon sun">☀️</span>
@@ -26,33 +46,43 @@
 
   <!-- 主容器 -->
   <main class="container page-transition">
-    <!-- 搜索框 -->
-    <div class="search-box">
-      <span class="search-icon">🔍</span>
-      <input type="text" id="searchInput" placeholder="搜索文章... (Ctrl+K)">
-    </div>
+    <div class="main-with-sidebar">
+      <div class="main-content">
+        <!-- 搜索框 -->
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="搜索文章... (Ctrl+K)">
+        </div>
 
-    <!-- 文章列表 -->
-    <div class="articles-container" id="articlesContainer">
-      <div id="skeletonLoader">
-        <article class="skeleton-article">
-          <div class="skeleton skeleton-title"></div>
-          <div class="skeleton skeleton-text"></div>
-          <div class="skeleton skeleton-text"></div>
-          <div class="skeleton skeleton-text" style="width:60%"></div>
-        </article>
-        <article class="skeleton-article">
-          <div class="skeleton skeleton-title"></div>
-          <div class="skeleton skeleton-text"></div>
-          <div class="skeleton skeleton-text"></div>
-          <div class="skeleton skeleton-text" style="width:50%"></div>
-        </article>
+        <!-- 文章列表 -->
+        <div class="articles-container" id="articlesContainer">
+          <div id="skeletonLoader">
+            <article class="skeleton-article">
+              <div class="skeleton skeleton-title"></div>
+              <div class="skeleton skeleton-text"></div>
+              <div class="skeleton skeleton-text"></div>
+              <div class="skeleton skeleton-text" style="width:60%"></div>
+            </article>
+            <article class="skeleton-article">
+              <div class="skeleton skeleton-title"></div>
+              <div class="skeleton skeleton-text"></div>
+              <div class="skeleton skeleton-text"></div>
+              <div class="skeleton skeleton-text" style="width:50%"></div>
+            </article>
+          </div>
+          <div id="articlesGrid" class="articles-grid"></div>
+        </div>
+
+        <!-- 分页 -->
+        <div class="pagination" id="pagination"></div>
       </div>
-      <div id="articlesGrid" class="articles-grid"></div>
-    </div>
 
-    <!-- 分页 -->
-    <div class="pagination" id="pagination"></div>
+      <!-- 侧边栏 -->
+      <aside class="sidebar">
+        <!-- 历史上的今天 -->
+        <div id="onThisDay" class="on-this-day-card hidden"></div>
+      </aside>
+    </div>
   </main>
 
   <!-- 返回顶部 -->
